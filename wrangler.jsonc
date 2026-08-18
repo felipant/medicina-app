@@ -17,7 +17,15 @@
 	"observability": {
 		"enabled": true
 	},
-	"upload_source_maps": true
+	"upload_source_maps": true,
+	"d1_databases": [
+		{
+			"binding": "medicina_app_db",
+			"database_name": "medicina-app-db",
+			"database_id": "259d8ab4-894e-43a7-b258-bb8cc6820fbc",
+			"remote": true
+		}
+	]
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

@@ -1,0 +1,15 @@
+export const MDCALC_CALCULADORAS = {
+  'Escore de Framingham': 'https://www.mdcalc.com/calc/38/framingham-risk-score-hard-coronary-heart-disease',
+  'CKD-EPI (TFG)': 'https://www.mdcalc.com/calc/3939/ckd-epi-equations-glomerular-filtration-rate-gfr',
+  'HOMA-IR': 'https://www.mdcalc.com/calc/3162/homa-ir-homeostatic-model-assessment-insulin-resistance',
+  'Wells TVP': 'https://www.mdcalc.com/calc/362/wells-criteria-dvt',
+  'CURB-65': 'https://www.mdcalc.com/calc/324/curb-65-score-pneumonia-severity',
+  'FINDRISC': 'https://www.mdcalc.com/calc/3152/findrisc-finnish-diabetes-risk-score',
+  'Child-Pugh': 'https://www.mdcalc.com/calc/340/child-pugh-score-cirrhosis-mortality',
+  'MELD': 'https://www.mdcalc.com/calc/78/meld-score-model-end-stage-liver-disease',
+  'MMSE': 'https://www.mdcalc.com/calc/1224/mini-mental-state-examination-mmse',
+  'PHQ-9': 'https://www.mdcalc.com/calc/1725/phq-9-patient-health-questionnaire-9',
+  'GAD-7': 'https://www.mdcalc.com/calc/1727/gad-7-general-anxiety-disorder-7',
+  'AUDIT-C': 'https://www.mdcalc.com/calc/1729/audit-c-alcohol-use-disorder-identification-test-consumption',
+  'Índice tornozelo-braquial': 'https://www.mdcalc.com/calc/2143/ankle-brachial-index-abi',
+};

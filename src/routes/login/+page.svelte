@@ -3,8 +3,10 @@
 
 	let { form } = $props();
 
-	let mode: 'login' | 'register' = $state('login');
+	let mode: 'login' | 'register' = $state(form?.mode === 'register' ? 'register' : 'login');
+	let name = $state(form?.name || '');
 	let email = $state(form?.email || '');
+	let institution = $state(form?.institution || 'UFSJ');
 	let password = $state('');
 	let showPassword = $state(false);
 	let loading = $state(false);
@@ -15,7 +17,7 @@
 </script>
 
 <svelte:head>
-	<title>{mode === 'login' ? 'Login' : 'Cadastro'} — Hub de Medicina</title>
+	<title>{mode === 'login' ? 'Login' : 'Cadastro de Profissional'} — Hub de Medicina</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
 	<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -35,7 +37,9 @@
 				</svg>
 			</div>
 			<h1>Medicina<span>Hub</span></h1>
-			<p class="subtitle">Acesse a plataforma de saúde & prontuários clínicos</p>
+			<p class="subtitle">
+				{mode === 'login' ? 'Acesse a plataforma de saúde & prontuários clínicos' : 'Crie sua conta de profissional ou estudante de saúde'}
+			</p>
 		</header>
 
 		{#if form?.error}
@@ -60,6 +64,65 @@
 				};
 			}}
 		>
+			{#if mode === 'register'}
+				<!-- Nome Completo (Apenas Cadastro) -->
+				<div class="form-group">
+					<label for="name">Nome Completo</label>
+					<div class="input-container">
+						<svg class="input-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
+							<circle cx="12" cy="7" r="4"/>
+						</svg>
+						<input
+							type="text"
+							id="name"
+							name="name"
+							bind:value={name}
+							placeholder="Dr(a). Nome Completo"
+							required
+							autocomplete="name"
+						/>
+					</div>
+				</div>
+
+				<!-- Instituição com Autocomplete / Sugestão UFSJ (Apenas Cadastro) -->
+				<div class="form-group">
+					<div class="label-row">
+						<label for="institution">Instituição / Universidade / Serviço</label>
+						<span class="field-hint">Sugestão: UFSJ</span>
+					</div>
+					<div class="input-container">
+						<svg class="input-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M3 21h18"/>
+							<path d="M5 21V7l8-4v18"/>
+							<path d="M19 21V11l-6-4"/>
+							<path d="M9 9v.01"/>
+							<path d="M9 13v.01"/>
+							<path d="M9 17v.01"/>
+						</svg>
+						<input
+							type="text"
+							id="institution"
+							name="institution"
+							list="instituicoes-list"
+							bind:value={institution}
+							placeholder="Ex: UFSJ / Hospital Municipal / UBS"
+							required
+						/>
+						<datalist id="instituicoes-list">
+							<option value="UFSJ">Universidade Federal de São João del-Rei (UFSJ)</option>
+							<option value="UFMG">Universidade Federal de Minas Gerais (UFMG)</option>
+							<option value="USP">Universidade de São Paulo (USP)</option>
+							<option value="UNIFESP">Universidade Federal de São Paulo (UNIFESP)</option>
+							<option value="UFRJ">Universidade Federal do Rio de Janeiro (UFRJ)</option>
+							<option value="SUS">Sistema Único de Saúde (SUS)</option>
+							<option value="Hospital Regional">Hospital Regional</option>
+							<option value="Ambulatório / Clínica Privada">Ambulatório / Clínica Privada</option>
+						</datalist>
+					</div>
+				</div>
+			{/if}
+
 			<div class="form-group">
 				<label for="email">E-mail Profissional</label>
 				<div class="input-container">
@@ -82,6 +145,9 @@
 			<div class="form-group">
 				<div class="label-row">
 					<label for="password">Senha de Acesso</label>
+					{#if mode === 'register'}
+						<span class="field-hint">Mínimo 6 caracteres</span>
+					{/if}
 				</div>
 				<div class="input-container">
 					<svg class="input-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -141,11 +207,14 @@
 					{mode === 'login' ? 'Cadastre-se' : 'Fazer Login'}
 				</button>
 			</p>
-			<div class="security-tag">
-				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-				</svg>
-				<span>Criptografia SHA-256 + Salt</span>
+			<div class="footer-links">
+				<div class="security-tag">
+					<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+					</svg>
+					<span>SHA-256 + Salt • 100% Client-Side</span>
+				</div>
+				<a href="/politica-de-privacidade" class="privacy-link">Política de Privacidade & LGPD</a>
 			</div>
 		</footer>
 	</main>
@@ -397,6 +466,19 @@
 		color: #7dd3fc;
 	}
 
+	.field-hint {
+		font-size: 11px;
+		color: #38bdf8;
+		font-weight: 500;
+	}
+
+	.footer-links {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 10px;
+	}
+
 	.security-tag {
 		display: inline-flex;
 		align-items: center;
@@ -407,5 +489,17 @@
 		padding: 4px 10px;
 		border-radius: 20px;
 		border: 1px solid rgba(255, 255, 255, 0.05);
+	}
+
+	.privacy-link {
+		font-size: 12px;
+		color: #94a3b8;
+		text-decoration: none;
+		transition: color 0.15s ease;
+	}
+
+	.privacy-link:hover {
+		color: #38bdf8;
+		text-decoration: underline;
 	}
 </style>

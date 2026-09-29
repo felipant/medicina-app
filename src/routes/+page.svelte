@@ -1,5 +1,8 @@
 <script lang="ts">
+	import ChangePasswordModal from '$lib/components/ChangePasswordModal.svelte';
+
 	let { data } = $props();
+	let isChangePasswordOpen = $state(false);
 </script>
 
 <svelte:head>
@@ -33,19 +36,17 @@
 						height="22"
 						fill="none"
 						stroke="currentColor"
-						stroke-linecap="round"
-						stroke-linejoin="round"
 					>
-						<!-- Bastão (Vara vertical) -->
+						<!-- Bastão de madeira -->
 						<line
 							x1="16"
 							y1="3"
 							x2="16"
 							y2="29"
-							stroke-width="2.4"
+							stroke-width="2.5"
+							stroke-linecap="round"
 						/>
-						<circle cx="16" cy="3" r="1.6" fill="currentColor" />
-						<!-- Serpente de Asclépio entrelaçada -->
+						<!-- Serpente entrelaçada no bastão -->
 						<path
 							d="M12 6.5C13.5 5 16 5 17.8 6.4C19.5 7.8 18.8 10 16 11.5C13 13 12.5 15.4 14.5 17.2C16.5 19 19.2 20.2 18.2 22.8C17.4 24.8 14.8 25.5 13 27"
 							stroke-width="2.2"
@@ -54,7 +55,7 @@
 				</div>
 				<div class="brand-text">
 					<span class="brand-title"
-						>Medicina<span class="brand-sub">App</span></span
+						>Medicina<span class="brand-sub">Hub</span></span
 					>
 					<span class="brand-tagline">Plataforma Clínica</span>
 				</div>
@@ -70,6 +71,78 @@
 							: "Médico"}</span
 					>
 				</div>
+				{#if data.user.role === "admin"}
+					<a
+						href="/admin/monitoramento"
+						class="btn-admin-panel"
+						title="Acessar painel de monitoramento de usuários e sessões"
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="15"
+							height="15"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path d="M3 3v18h18" />
+							<path d="m19 9-5 5-4-4-3 3" />
+						</svg>
+						<span>Uso & Sessões</span>
+					</a>
+					<a
+						href="/admin/unidades-saude"
+						class="btn-admin-panel"
+						title="Gerenciar Unidades de Saúde (ESF / UBS)"
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="15"
+							height="15"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path d="M3 21h18" />
+							<path d="M5 21V7l8-4 6 3v15" />
+							<path d="M9 9h1" />
+							<path d="M9 13h1" />
+							<path d="M9 17h1" />
+							<path d="M14 9h1" />
+							<path d="M14 13h1" />
+							<path d="M14 17h1" />
+						</svg>
+						<span>Unidades ESF</span>
+					</a>
+				{/if}
+				<button
+					type="button"
+					class="btn-user-action"
+					onclick={() => (isChangePasswordOpen = true)}
+					title="Alterar senha de acesso"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						width="15"
+						height="15"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+						<path d="M7 11V7a5 5 0 0 1 10 0v4" />
+					</svg>
+					<span>Alterar Senha</span>
+				</button>
 				<form action="/logout" method="POST">
 					<button
 						type="submit"
@@ -98,81 +171,49 @@
 		</div>
 	</header>
 
+	<ChangePasswordModal bind:isOpen={isChangePasswordOpen} />
+
 	<!-- Main Content -->
 	<main class="hub-main">
 		<!-- Hero Banner Minimalista -->
 		<section class="hero-banner">
 			<div class="hero-content">
-				<div class="section-kicker">
-					<span class="kicker-icon">
-						<!-- Mini Bastão de Asclépio -->
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 32 32"
-							width="14"
-							height="14"
-							fill="none"
-							stroke="currentColor"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<line
-								x1="16"
-								y1="4"
-								x2="16"
-								y2="28"
-								stroke-width="2.5"
-							/>
-							<path
-								d="M12 8C13.5 6.5 16 6.5 17.5 8C19 9.5 18 11.5 16 13C13.5 14.5 13 16.5 15 18C17 19.5 18.5 21 17.5 23C16.8 24.5 14.5 25 13 26.5"
-								stroke-width="2"
-							/>
-						</svg>
-					</span>
-					<span>SISTEMA DE APOIO CLÍNICO</span>
+				<div class="hero-badge">
+					<span class="pulse-dot"></span>
+					<span>Prontuário Eletrônico Client-Side First</span>
 				</div>
-				<h1 class="hero-heading">Módulos & Aplicações Médicas</h1>
-				<p class="hero-subtext">
-					Prontuário estruturado, exame físico guiado, suporte a
-					decisões terapêuticas e acompanhamento longitudinal.
+				<h1 class="hero-title">
+					Estruturação Clínica e Prescrição Inteligente
+				</h1>
+				<p class="hero-subtitle">
+					Selecione o módulo de atendimento desejado para iniciar a
+					anamnese, exame físico e plano terapêutico.
 				</p>
 			</div>
 		</section>
 
-		<!-- Cards Grid -->
+		<!-- Grid de Módulos / Aplicações -->
 		<section class="cards-grid">
 			<!-- Application 1: Anamnese Pediátrica (Active) -->
 			<div class="app-card active-card">
 				<div class="card-top">
 					<div class="card-icon-wrap active-icon">
-						<!-- Bastão de Asclépio + Prontuário Clínico -->
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 32 32"
-							width="28"
-							height="28"
+							viewBox="0 0 24 24"
+							width="26"
+							height="26"
 							fill="none"
 							stroke="currentColor"
+							stroke-width="2"
 							stroke-linecap="round"
 							stroke-linejoin="round"
 						>
-							<!-- Staff & Snake -->
-							<line
-								x1="16"
-								y1="4"
-								x2="16"
-								y2="28"
-								stroke-width="2.2"
-							/>
-							<circle
-								cx="16"
-								cy="4"
-								r="1.4"
-								fill="currentColor"
-							/>
+							<path d="M9 12h.01" />
+							<path d="M15 12h.01" />
+							<path d="M10 16c.5.5 1.5.5 2 0" />
 							<path
-								d="M12 7.5C13.5 6.2 16 6.2 17.8 7.5C19.4 8.8 18.6 11 16 12.4C13.2 13.8 12.6 16.2 14.6 18C16.6 19.6 19 20.8 18 23.2C17.2 25 14.8 25.6 13 27"
-								stroke-width="2"
+								d="M19 6.3a9 9 0 0 1 1.8 3.9 2 2 0 0 1 0 3.6 9 9 0 0 1-17.6 0 2 2 0 0 1 0-3.6A9 9 0 0 1 12 3c2 0 3.5 1.1 3.5 2.5s-.9 2.5-2 2.5c-.8 0-1.5-.4-1.5-1"
 							/>
 						</svg>
 					</div>
@@ -221,15 +262,170 @@
 				</div>
 			</div>
 
-			<!-- Application 2: Calculadora Cardiológica (Coming Soon) -->
-			<div class="app-card disabled-card">
+			<!-- Application 2: Anamnese do Adulto (Active) -->
+			<div class="app-card active-card">
+				<div class="card-top">
+					<div class="card-icon-wrap active-icon">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 32 32"
+							width="26"
+							height="26"
+							fill="none"
+							stroke="currentColor"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path
+								d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+								stroke-width="2"
+							/>
+							<rect
+								x="8"
+								y="2"
+								width="8"
+								height="4"
+								rx="1"
+								ry="1"
+								stroke-width="2"
+							/>
+							<line
+								x1="10"
+								y1="12"
+								x2="18"
+								y2="12"
+								stroke-width="2"
+							/>
+							<line
+								x1="10"
+								y1="16"
+								x2="18"
+								y2="16"
+								stroke-width="2"
+							/>
+							<line
+								x1="10"
+								y1="20"
+								x2="14"
+								y2="20"
+								stroke-width="2"
+							/>
+						</svg>
+					</div>
+					<span class="badge-status online">Disponível</span>
+				</div>
+
+				<div class="card-body">
+					<h2 class="card-title">Anamnese do Adulto</h2>
+					<p class="card-category">
+						Prontuário Clínico & Modelo SOAP
+					</p>
+					<p class="card-desc">
+						Estrutura completa para atendimento clínico no adulto:
+						identificação detalhada com acompanhante, queixa
+						principal, HMA com roteiro mnemônico SOCRATES, revisão
+						de sistemas, história patológica pregressa e familiar.
+					</p>
+
+					<div class="card-features">
+						<span class="feature-tag">Roteiro SOCRATES</span>
+						<span class="feature-tag">12 Sistemas</span>
+						<span class="feature-tag">Ginecologia</span>
+						<span class="feature-tag">Medicamentos ANVISA</span>
+						<span class="feature-tag">História Familiar</span>
+					</div>
+				</div>
+
+				<div class="card-footer">
+					<a href="/anamnese-adulto" class="btn-primary">
+						<span>Abrir Anamnese do Adulto</span>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="16"
+							height="16"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2.2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<line x1="5" y1="12" x2="19" y2="12" />
+							<polyline points="12 5 19 12 12 19" />
+						</svg>
+					</a>
+				</div>
+			</div>
+
+			<!-- Application 3: Prescrição Médica -->
+			<div class="app-card">
 				<div class="card-top">
 					<div class="card-icon-wrap">
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
-							width="24"
-							height="24"
 							viewBox="0 0 24 24"
+							width="26"
+							height="26"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path
+								d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"
+							/>
+							<path d="m8.5 8.5 7 7" />
+						</svg>
+					</div>
+					<span class="badge-status online">Disponível</span>
+				</div>
+
+				<div class="card-body">
+					<h2 class="card-title">Prescrição Médica & Receituário</h2>
+					<p class="card-category">Receita Dupla Paisagem (2 Vias)</p>
+					<p class="card-desc">
+						Gerador de receitas médicas em PDF duplicado com linha de corte central (Via Paciente / Via Farmácia), seleção rápida de Unidades ESF e privacidade 100% no navegador.
+					</p>
+
+					<div class="card-features">
+						<span class="feature-tag">2 Vias Paisagem</span>
+						<span class="feature-tag">Base ESF/UBS</span>
+						<span class="feature-tag">Agrupamento por Via</span>
+						<span class="feature-tag">100% Client-Side</span>
+					</div>
+				</div>
+
+				<div class="card-footer">
+					<a href="/prescricao" class="btn-primary">
+						<span>Abrir Prescrição Médica</span>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="16"
+							height="16"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2.2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<line x1="5" y1="12" x2="19" y2="12" />
+							<polyline points="12 5 19 12 12 19" />
+						</svg>
+					</a>
+				</div>
+			</div>
+
+			<!-- Application 4: Pronto-Atendimento & Urgência (Future) -->
+			<div class="app-card disabled-card">
+				<div class="card-top">
+					<div class="card-icon-wrap disabled-icon">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 24 24"
+							width="26"
+							height="26"
 							fill="none"
 							stroke="currentColor"
 							stroke-width="2"
@@ -239,51 +435,7 @@
 							<path
 								d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"
 							/>
-							<polyline
-								points="3.22 12 7 12 9 8 12 16 14 12 20.78 12"
-							/>
-						</svg>
-					</div>
-					<span class="badge-status muted">Em Breve</span>
-				</div>
-
-				<div class="card-body">
-					<h2 class="card-title">Cardiologia & Hemodinâmica</h2>
-					<p class="card-category">
-						Calculadoras Clínicas & Escores de Risco
-					</p>
-					<p class="card-desc">
-						Estratificação de risco cardiovascular (Framingham,
-						GRACE, TIMI), cálculo de clearance de creatinina,
-						dosagem de drogas vasoativas e ajuste por peso corporal.
-					</p>
-				</div>
-
-				<div class="card-footer">
-					<button type="button" class="btn-disabled" disabled
-						>Módulo em Planejamento</button
-					>
-				</div>
-			</div>
-
-			<!-- Application 3: Urgência & Emergência (Coming Soon) -->
-			<div class="app-card disabled-card">
-				<div class="card-top">
-					<div class="card-icon-wrap">
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							width="24"
-							height="24"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<polygon
-								points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"
-							/>
+							<path d="M12 5v14" />
 						</svg>
 					</div>
 					<span class="badge-status muted">Em Breve</span>
@@ -308,7 +460,7 @@
 		</section>
 	</main>
 
-	<!-- Minimal Footer -->
+	<!-- Footer com Link para Política de Privacidade -->
 	<footer class="hub-footer">
 		<div class="footer-inner">
 			<div class="footer-brand">
@@ -328,11 +480,13 @@
 						stroke-width="1.8"
 					/>
 				</svg>
-				<span>MedicinaApp · Plataforma para Profissionais de Saúde</span
+				<span>MedicinaHub · Plataforma para Profissionais de Saúde</span
 				>
 			</div>
-			<div class="footer-copy">
-				Desenvolvido para atendimento clínico de alta precisão
+			<div class="footer-links-row">
+				<a href="/politica-de-privacidade" class="footer-link"
+					>Política de Privacidade & LGPD</a
+				>
 			</div>
 		</div>
 	</footer>
@@ -492,6 +646,50 @@
 		background: #f0fdfa;
 		color: #0f766e;
 		border: 1px solid #ccfbf1;
+	}
+
+	.btn-admin-panel {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		background: #fdf2f8;
+		border: 1px solid #fbcfe8;
+		color: #be185d;
+		padding: 7px 12px;
+		border-radius: 8px;
+		font-size: 12.5px;
+		font-weight: 600;
+		text-decoration: none;
+		transition: all 0.15s ease;
+	}
+
+	.btn-admin-panel:hover {
+		background: #fce7f3;
+		border-color: #f472b6;
+		color: #9d174d;
+		box-shadow: 0 2px 6px rgba(190, 24, 93, 0.12);
+	}
+
+	.btn-user-action {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		background: #ffffff;
+		border: 1px solid #cbd5e1;
+		color: #334155;
+		padding: 7px 12px;
+		border-radius: 8px;
+		font-size: 12.5px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.btn-user-action:hover {
+		background: #f8fafc;
+		border-color: #94a3b8;
+		color: #0f172a;
+		box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
 	}
 
 	.btn-logout {
@@ -763,6 +961,31 @@
 		gap: 8px;
 		color: #0f766e;
 		font-weight: 600;
+	}
+
+	.footer-links-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+
+	.footer-link {
+		color: #0284c7;
+		font-weight: 600;
+		text-decoration: none;
+	}
+
+	.footer-link:hover {
+		text-decoration: underline;
+	}
+
+	.footer-separator {
+		color: #cbd5e1;
+	}
+
+	.footer-copy {
+		color: #64748b;
 	}
 
 	@media (max-width: 640px) {

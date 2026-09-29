@@ -22,8 +22,7 @@
 		{
 			"binding": "medicina_app_db",
 			"database_name": "medicina-app-db",
-			"database_id": "259d8ab4-894e-43a7-b258-bb8cc6820fbc",
-			"remote": true
+			"database_id": "259d8ab4-894e-43a7-b258-bb8cc6820fbc"
 		}
 	]
 	/**

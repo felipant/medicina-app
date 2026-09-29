@@ -1,44 +1,34 @@
 <script lang="ts">
-	interface MedicamentoResult {
-		id: number;
-		nome: string;
-		tipo: 'produto' | 'principio_ativo';
-		tipo_produto?: string;
-		substancia?: string;
-	}
+	import type { MedicamentoItem } from '$lib/components/MedicamentoModal.svelte';
 
 	interface SearchResponse {
-		produtos: MedicamentoResult[];
-		principios_ativos: MedicamentoResult[];
+		medicamentos: MedicamentoItem[];
+		principios_ativos: { id: number; nome: string }[];
 	}
 
 	let {
 		value = $bindable(''),
-		placeholder = 'Pesquisar medicamento...',
+		placeholder = 'Pesquisar princípio ativo ou dose...',
 		id = '',
 		onSelect
 	}: {
 		value?: string;
 		placeholder?: string;
 		id?: string;
-		onSelect?: (item: MedicamentoResult) => void;
+		onSelect?: (item: MedicamentoItem) => void;
 	} = $props();
 
 	let query = $state('');
-	let results = $state<SearchResponse>({ produtos: [], principios_ativos: [] });
+	let results = $state<SearchResponse>({ medicamentos: [], principios_ativos: [] });
 	let isOpen = $state(false);
 	let isLoading = $state(false);
 	let selectedIndex = $state(-1);
 	let inputEl: HTMLInputElement | undefined = $state(undefined);
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
-	function getAllResults(): MedicamentoResult[] {
-		return [...results.produtos, ...results.principios_ativos];
-	}
-
 	async function searchMedicamentos(searchQuery: string) {
 		if (searchQuery.length < 2) {
-			results = { produtos: [], principios_ativos: [] };
+			results = { medicamentos: [], principios_ativos: [] };
 			isOpen = false;
 			return;
 		}
@@ -48,7 +38,7 @@
 			const res = await fetch(`/api/medicamentos?q=${encodeURIComponent(searchQuery)}`);
 			if (res.ok) {
 				results = await res.json();
-				isOpen = results.produtos.length > 0 || results.principios_ativos.length > 0;
+				isOpen = results.medicamentos.length > 0;
 				selectedIndex = -1;
 			}
 		} catch (e) {
@@ -62,13 +52,16 @@
 		if (debounceTimer) clearTimeout(debounceTimer);
 		debounceTimer = setTimeout(() => {
 			searchMedicamentos(query);
-		}, 300);
+		}, 250);
 	}
 
-	function selectItem(item: MedicamentoResult) {
-		const label = item.tipo === 'produto'
-			? `${item.nome}${item.tipo_produto ? ` (${item.tipo_produto})` : ''}`
-			: item.nome;
+	function selectItem(item: MedicamentoItem) {
+		const parts: string[] = [item.principio_ativo];
+		if (item.concentracao) parts.push(item.concentracao);
+		if (item.forma_farmaceutica) parts.push(item.forma_farmaceutica);
+		if (item.via_administracao) parts.push(`via ${item.via_administracao}`);
+
+		const label = parts.join(' · ');
 
 		if (value && value.trim()) {
 			value = value.trim() + '; ' + label;
@@ -78,13 +71,13 @@
 
 		query = '';
 		isOpen = false;
-		results = { produtos: [], principios_ativos: [] };
+		results = { medicamentos: [], principios_ativos: [] };
 
 		if (onSelect) onSelect(item);
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		const all = getAllResults();
+		const all = results.medicamentos;
 		if (!isOpen || all.length === 0) return;
 
 		if (e.key === 'ArrowDown') {
@@ -101,225 +94,236 @@
 		}
 	}
 
-	function handleBlur() {
-		// Delay to allow click on dropdown item
-		setTimeout(() => {
+	function handleClickOutside(e: MouseEvent) {
+		const target = e.target as HTMLElement;
+		if (!target.closest('.med-search-container')) {
 			isOpen = false;
-		}, 200);
+		}
 	}
 </script>
 
-<div class="med-search-wrapper">
-	<div class="med-search-input-row">
+<svelte:window onclick={handleClickOutside} />
+
+<div class="med-search-container">
+	<div class="search-input-wrapper">
+		<svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+			<circle cx="11" cy="11" r="8"/>
+			<line x1="21" y1="21" x2="16.65" y2="16.65"/>
+		</svg>
 		<input
 			bind:this={inputEl}
+			type="text"
+			class="search-input"
+			{placeholder}
+			{id}
 			bind:value={query}
 			oninput={handleInput}
 			onkeydown={handleKeydown}
-			onfocus={() => { if (getAllResults().length > 0) isOpen = true; }}
-			onblur={handleBlur}
-			type="text"
-			{placeholder}
-			{id}
-			class="med-search-input"
+			onfocus={() => { if (results.medicamentos.length > 0) isOpen = true; }}
 			autocomplete="off"
 		/>
 		{#if isLoading}
-			<div class="med-search-spinner"></div>
-		{/if}
-		{#if query.length > 0}
+			<div class="spinner"></div>
+		{:else if query}
 			<button
 				type="button"
-				class="med-search-clear"
-				onclick={() => { query = ''; isOpen = false; results = { produtos: [], principios_ativos: [] }; }}
-			>×</button>
+				class="btn-clear"
+				onclick={() => { query = ''; isOpen = false; results = { medicamentos: [], principios_ativos: [] }; }}
+			>
+				✕
+			</button>
 		{/if}
 	</div>
 
-	{#if isOpen}
-		<div class="med-search-dropdown">
-			{#if results.produtos.length > 0}
-				<div class="med-search-group-label">Produtos</div>
-				{#each results.produtos as item, i}
-					<button
-						type="button"
-						class="med-search-item"
-						class:selected={selectedIndex === i}
-						onmousedown={(e) => { e.preventDefault(); selectItem(item); }}
+	{#if isOpen && results.medicamentos.length > 0}
+		<div class="dropdown-results">
+			<div class="dropdown-header">
+				<span>Princípios Ativos Filtrados ({results.medicamentos.length})</span>
+			</div>
+			<div class="dropdown-list">
+				{#each results.medicamentos as med, i (med.id)}
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+					<div
+						class="med-box-item"
+						class:selected={i === selectedIndex}
+						role="button"
+						tabindex="0"
+						onclick={() => selectItem(med)}
+						onmouseenter={() => (selectedIndex = i)}
 					>
-						<span class="med-item-name">{item.nome}</span>
-						{#if item.tipo_produto}
-							<span class="med-item-badge">{item.tipo_produto}</span>
-						{/if}
-						{#if item.substancia}
-							<span class="med-item-sub">{item.substancia}</span>
-						{/if}
-					</button>
+						<div class="med-box-top">
+							<span class="med-pa-title">{med.principio_ativo}</span>
+						</div>
+						<div class="med-badges-list">
+							{#if med.concentracao}
+								<span class="badge badge-dose">{med.concentracao}</span>
+							{/if}
+							{#if med.forma_farmaceutica}
+								<span class="badge badge-forma">{med.forma_farmaceutica}</span>
+							{/if}
+							{#if med.via_administracao}
+								<span class="badge badge-via">{med.via_administracao}</span>
+							{/if}
+						</div>
+					</div>
 				{/each}
-			{/if}
-			{#if results.principios_ativos.length > 0}
-				<div class="med-search-group-label">Princípios Ativos</div>
-				{#each results.principios_ativos as item, j}
-					{@const idx = results.produtos.length + j}
-					<button
-						type="button"
-						class="med-search-item"
-						class:selected={selectedIndex === idx}
-						onmousedown={(e) => { e.preventDefault(); selectItem(item); }}
-					>
-						<span class="med-item-name">{item.nome}</span>
-						<span class="med-item-badge pa">Princípio Ativo</span>
-					</button>
-				{/each}
-			{/if}
+			</div>
 		</div>
 	{/if}
 </div>
 
 <style>
-	.med-search-wrapper {
+	.med-search-container {
 		position: relative;
 		width: 100%;
 	}
 
-	.med-search-input-row {
+	.search-input-wrapper {
 		position: relative;
 		display: flex;
 		align-items: center;
 	}
 
-	.med-search-input {
+	.search-icon {
+		position: absolute;
+		left: 12px;
+		color: #94a3b8;
+		pointer-events: none;
+	}
+
+	.search-input {
 		width: 100%;
-		border: 1px solid var(--border, #ccc);
-		border-radius: 6px;
-		padding: 7px 32px 7px 10px;
-		font-family: var(--font, 'IBM Plex Sans', sans-serif);
-		font-size: 12.5px;
-		color: var(--text, #111);
-		background: var(--surface, #fff);
-		transition: border-color 0.15s, box-shadow 0.15s;
-	}
-
-	.med-search-input:focus {
+		padding: 9px 36px 9px 36px;
+		font-size: 0.875rem;
+		border: 1.5px solid #cbd5e1;
+		border-radius: 8px;
+		background: #ffffff;
+		color: #0f172a;
 		outline: none;
-		border-color: var(--accent-teal, #0d9488);
-		box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12);
+		transition: all 0.15s;
 	}
 
-	.med-search-input::placeholder {
-		color: #aaa;
-		font-size: 12px;
+	.search-input:focus {
+		border-color: #0284c7;
+		box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.12);
 	}
 
-	.med-search-spinner {
+	.btn-clear {
 		position: absolute;
 		right: 10px;
-		width: 14px;
-		height: 14px;
-		border: 2px solid #ddd;
-		border-top-color: var(--accent-teal, #0d9488);
-		border-radius: 50%;
-		animation: med-spin 0.6s linear infinite;
-	}
-
-	@keyframes med-spin {
-		to { transform: rotate(360deg); }
-	}
-
-	.med-search-clear {
-		position: absolute;
-		right: 8px;
 		background: none;
 		border: none;
-		font-size: 16px;
-		color: #999;
+		font-size: 0.875rem;
+		color: #94a3b8;
 		cursor: pointer;
-		padding: 0 4px;
-		line-height: 1;
+		padding: 2px 6px;
+		border-radius: 4px;
 	}
 
-	.med-search-clear:hover {
-		color: #333;
+	.btn-clear:hover {
+		color: #475569;
 	}
 
-	.med-search-dropdown {
+	.spinner {
 		position: absolute;
-		top: 100%;
+		right: 12px;
+		width: 16px;
+		height: 16px;
+		border: 2px solid #cbd5e1;
+		border-top-color: #0284c7;
+		border-radius: 50%;
+		animation: spin 0.6s linear infinite;
+	}
+
+	.dropdown-results {
+		position: absolute;
+		top: calc(100% + 4px);
 		left: 0;
 		right: 0;
-		background: #fff;
-		border: 1px solid var(--border, #ccc);
-		border-radius: 8px;
-		margin-top: 4px;
-		max-height: 260px;
+		background: #ffffff;
+		border: 1.5px solid #e2e8f0;
+		border-radius: 12px;
+		box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
+		z-index: 50;
+		max-height: 380px;
 		overflow-y: auto;
-		z-index: 200;
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 	}
 
-	.med-search-group-label {
-		font-size: 10px;
-		font-weight: 700;
+	.dropdown-header {
+		padding: 8px 12px;
+		font-size: 0.6875rem;
+		font-weight: 800;
 		text-transform: uppercase;
-		letter-spacing: 0.06em;
-		color: #888;
-		padding: 8px 12px 4px;
-		border-top: 1px solid #f0f0f0;
+		letter-spacing: 0.05em;
+		color: #64748b;
+		background: #f8fafc;
+		border-bottom: 1px solid #f1f5f9;
 	}
 
-	.med-search-group-label:first-child {
-		border-top: none;
+	.dropdown-list {
+		padding: 6px;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
 	}
 
-	.med-search-item {
+	.med-box-item {
+		padding: 10px 12px;
+		border-radius: 8px;
+		border: 1px solid #f1f5f9;
+		cursor: pointer;
+		transition: all 0.15s;
+		background: #ffffff;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.med-box-item:hover, .med-box-item.selected {
+		background: #f0f9ff;
+		border-color: #7dd3fc;
+		transform: translateX(2px);
+	}
+
+	.med-pa-title {
+		font-size: 0.875rem;
+		font-weight: 700;
+		color: #0f172a;
+	}
+
+	.med-badges-list {
 		display: flex;
 		flex-wrap: wrap;
-		align-items: center;
-		gap: 6px;
-		width: 100%;
-		text-align: left;
-		padding: 8px 12px;
-		border: none;
-		background: none;
-		cursor: pointer;
-		font-family: var(--font, 'IBM Plex Sans', sans-serif);
-		font-size: 12.5px;
-		color: #333;
-		transition: background 0.1s;
+		gap: 5px;
 	}
 
-	.med-search-item:hover,
-	.med-search-item.selected {
-		background: #f0fdf4;
-	}
-
-	.med-item-name {
-		font-weight: 500;
-	}
-
-	.med-item-badge {
-		font-size: 9.5px;
+	.badge {
+		display: inline-flex;
+		padding: 2px 7px;
+		font-size: 0.75rem;
 		font-weight: 600;
-		padding: 1px 6px;
-		border-radius: 3px;
-		background: #e8e8e8;
-		color: #666;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
+		border-radius: 4px;
 	}
 
-	.med-item-badge.pa {
-		background: #dbeafe;
-		color: #1e40af;
+	.badge-dose {
+		background: #f0fdf4;
+		color: #15803d;
+		border: 1px solid #bbf7d0;
 	}
 
-	.med-item-sub {
-		font-size: 11px;
-		color: #999;
-		flex-basis: 100%;
-		padding-left: 2px;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+	.badge-forma {
+		background: #f8fafc;
+		color: #334155;
+		border: 1px solid #e2e8f0;
+	}
+
+	.badge-via {
+		background: #faf5ff;
+		color: #7e22ce;
+		border: 1px solid #f3e8ff;
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
 	}
 </style>

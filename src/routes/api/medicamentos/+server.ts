@@ -1,85 +1,117 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
-interface MedicamentoResult {
+export interface MedicamentoItem {
+	id: number;
+	principio_ativo_id: number;
+	principio_ativo: string;
+	nome_comercial?: string;
+	concentracao: string;
+	forma_farmaceutica: string;
+	via_administracao: string;
+	classe_terapeutica?: string;
+}
+
+export interface PrincipioAtivoItem {
 	id: number;
 	nome: string;
-	tipo: 'produto' | 'principio_ativo';
-	tipo_produto?: string;
-	substancia?: string;
 }
 
 export const GET: RequestHandler = async ({ url, platform }) => {
 	const query = url.searchParams.get('q')?.trim() || '';
 	if (query.length < 2) {
-		return json({ produtos: [], principios_ativos: [] });
+		return json({ medicamentos: [], principios_ativos: [] });
 	}
 
 	const env = platform?.env as any;
 	const db = env?.medicina_app_db;
 
 	if (!db) {
-		return json({ produtos: [], principios_ativos: [] });
+		console.warn('D1 database binding "medicina_app_db" not found in platform.env');
+		return json({ medicamentos: [], principios_ativos: [] });
 	}
 
 	try {
-		const searchTerm = `%${query}%`;
-		const startsWithTerm = `${query}%`;
+		const terms = query.split(/\s+/).filter(Boolean);
+		const firstTerm = terms[0];
+		const exactTerm = query.toUpperCase();
+		const startsWithTerm = `${firstTerm.toUpperCase()}%`;
+		const containsTerm = `%${firstTerm.toUpperCase()}%`;
 
-		// Busca produtos por nome comercial ou princípio ativo contido em substancia_raw
-		const produtosResult = await db
-			.prepare(
-				`SELECT id, nome_comercial as nome, tipo_produto, substancia_raw as substancia
-				 FROM produtos
-				 WHERE nome_comercial LIKE ?1 OR substancia_raw LIKE ?1
-				 ORDER BY 
-				   CASE 
-				     WHEN nome_comercial LIKE ?2 THEN 0 
-				     WHEN nome_comercial LIKE ?1 THEN 1
-				     ELSE 2 
-				   END,
-				   nome_comercial ASC
-				 LIMIT 20`
-			)
-			.bind(searchTerm, startsWithTerm)
-			.all();
+		// Busca apresentações vinculadas ao princípio ativo
+		const conditions: string[] = [];
+		const params: any[] = [];
+		let paramIndex = 1;
 
-		// Busca princípios ativos
-		const principiosResult = await db
-			.prepare(
-				`SELECT DISTINCT id, nome
-				 FROM principios_ativos
-				 WHERE nome LIKE ?1
-				 ORDER BY 
-				   CASE 
-				     WHEN nome LIKE ?2 THEN 0 
-				     ELSE 1 
-				   END,
-				   nome ASC
-				 LIMIT 20`
-			)
-			.bind(searchTerm, startsWithTerm)
-			.all();
+		for (const term of terms) {
+			const t = `%${term}%`;
+			conditions.push(
+				`(pa.nome LIKE ?${paramIndex} OR a.concentracao LIKE ?${paramIndex} OR a.forma_farmaceutica LIKE ?${paramIndex} OR a.via_administracao LIKE ?${paramIndex})`
+			);
+			params.push(t);
+			paramIndex++;
+		}
 
-		const produtos: MedicamentoResult[] = (produtosResult.results || []).map((r: any) => ({
-			id: r.id,
-			nome: r.nome,
-			tipo: 'produto' as const,
-			tipo_produto: r.tipo_produto || '',
-			substancia: r.substancia || ''
-		}));
+		const whereSql = conditions.join(' AND ');
+		const exactParam = paramIndex++;
+		const startsParam = paramIndex++;
+		const containsParam = paramIndex++;
+		params.push(exactTerm, startsWithTerm, containsTerm);
 
-		const principios_ativos: MedicamentoResult[] = (principiosResult.results || []).map(
-			(r: any) => ({
+		const medsSql = `
+			SELECT 
+				a.id,
+				pa.id as principio_ativo_id,
+				pa.nome as principio_ativo,
+				COALESCE(a.concentracao, '') as concentracao,
+				COALESCE(a.forma_farmaceutica, '') as forma_farmaceutica,
+				COALESCE(a.via_administracao, '') as via_administracao,
+				COALESCE(c.descricao, '') as classe_terapeutica
+			FROM apresentacoes a
+			JOIN principios_ativos pa ON a.principio_ativo_id = pa.id
+			LEFT JOIN classes_terapeuticas c ON a.classe_terapeutica_id = c.id
+			WHERE ${whereSql}
+			ORDER BY 
+				CASE 
+					WHEN UPPER(pa.nome) = ?${exactParam} THEN 0 
+					WHEN UPPER(pa.nome) LIKE ?${startsParam} THEN 1
+					WHEN UPPER(pa.nome) LIKE ?${containsParam} THEN 2
+					ELSE 3
+				END,
+				pa.nome ASC,
+				a.forma_farmaceutica ASC,
+				a.concentracao ASC
+			LIMIT 50
+		`;
+
+		const medsResult = await db.prepare(medsSql).bind(...params).all();
+
+		const uniquePaMap = new Map<number, string>();
+
+		const medicamentos: MedicamentoItem[] = (medsResult.results || []).map((r: any) => {
+			if (r.principio_ativo_id && r.principio_ativo && !uniquePaMap.has(r.principio_ativo_id)) {
+				uniquePaMap.set(r.principio_ativo_id, r.principio_ativo);
+			}
+
+			return {
 				id: r.id,
-				nome: r.nome,
-				tipo: 'principio_ativo' as const
-			})
+				principio_ativo_id: r.principio_ativo_id,
+				principio_ativo: r.principio_ativo,
+				nome_comercial: r.principio_ativo,
+				concentracao: r.concentracao,
+				forma_farmaceutica: r.forma_farmaceutica,
+				via_administracao: r.via_administracao,
+				classe_terapeutica: r.classe_terapeutica
+			};
+		});
+
+		const principios_ativos: PrincipioAtivoItem[] = Array.from(uniquePaMap.entries()).map(
+			([id, nome]) => ({ id, nome })
 		);
 
-		return json({ produtos, principios_ativos });
+		return json({ medicamentos, principios_ativos });
 	} catch (e) {
 		console.error('Error searching medications in D1:', e);
-		return json({ produtos: [], principios_ativos: [] }, { status: 500 });
+		return json({ medicamentos: [], principios_ativos: [] }, { status: 500 });
 	}
 };

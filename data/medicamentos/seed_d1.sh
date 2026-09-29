@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# seed_d1.sh — Popula a base D1 com dados de medicamentos
+# seed_d1.sh — Popula a base D1 com a base limpa de medicamentos
 # Uso:
-#   ./seed_d1.sh          → popula D1 LOCAL (dev)
-#   ./seed_d1.sh --remote → popula D1 REMOTO (produção)
+#   ./data/medicamentos/seed_d1.sh          → popula D1 LOCAL (dev)
+#   ./data/medicamentos/seed_d1.sh --remote → popula D1 REMOTO (produção)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,11 +23,12 @@ fi
 
 cd "$PROJECT_ROOT"
 
-echo "📋 1. Criando tabelas (schema.sql)..."
-npx wrangler d1 execute "$DB_NAME" --file="$SCRIPT_DIR/schema.sql" $REMOTE_FLAG || echo "   (tabelas podem já existir)"
+echo "🧹 1. Removendo tabelas antigas e recriando schema limpo..."
+npx wrangler d1 execute "$DB_NAME" --command="PRAGMA foreign_keys = OFF; DROP TABLE IF EXISTS produto_principio_ativo; DROP TABLE IF EXISTS apresentacoes_nova; DROP TABLE IF EXISTS apresentacoes; DROP TABLE IF EXISTS produtos; DROP TABLE IF EXISTS principios_ativos; DROP TABLE IF EXISTS classes_terapeuticas; PRAGMA foreign_keys = ON;" $REMOTE_FLAG
+npx wrangler d1 execute "$DB_NAME" --file="$SCRIPT_DIR/schema.sql" $REMOTE_FLAG
 
 echo ""
-echo "🐍 2. Gerando SQL de seed a partir dos CSVs..."
+echo "🐍 2. Gerando SQL de seed a partir dos CSVs limpos..."
 python3 "$SCRIPT_DIR/generate_seed_sql.py"
 
 SEED_FILE="$SCRIPT_DIR/seed_data.sql"
@@ -36,15 +37,12 @@ if [[ ! -f "$SEED_FILE" ]]; then
     exit 1
 fi
 
-# Split large SQL file into smaller chunks for D1 (max ~100KB per execution)
 echo ""
 echo "📦 3. Importando dados para D1 em batches..."
 
-# Use csplit or awk to split by empty lines (between statements)
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
 
-# Split file: each statement ends with ";\n\n"
 awk -v dir="$TEMP_DIR" '
 BEGIN { file_num = 1; current = "" }
 /^$/ {
@@ -77,18 +75,17 @@ ERRORS=0
 for batch_file in "$TEMP_DIR"/batch_*.sql; do
     CURRENT=$((CURRENT + 1))
     printf "\r   Importando batch %d/%d..." "$CURRENT" "$BATCH_COUNT"
-    if ! npx wrangler d1 execute "$DB_NAME" --file="$batch_file" $REMOTE_FLAG 2>/dev/null; then
+    if ! npx wrangler d1 execute "$DB_NAME" --file="$batch_file" $REMOTE_FLAG > /dev/null 2>&1; then
         ERRORS=$((ERRORS + 1))
     fi
 done
 
 echo ""
 if [[ $ERRORS -gt 0 ]]; then
-    echo "⚠️  $ERRORS batches com erros (dados duplicados são ignorados com INSERT OR IGNORE)."
+    echo "⚠️  $ERRORS batches com avisos (dados duplicados ignorados com INSERT OR IGNORE)."
 else
     echo "✅ Todos os dados importados com sucesso!"
 fi
 
 echo ""
-echo "📊 Verificando contagem de registros..."
-npx wrangler d1 execute "$DB_NAME" --command="SELECT 'classes_terapeuticas' as tabela, count(*) as total FROM classes_terapeuticas UNION ALL SELECT 'principios_ativos', count(*) FROM principios_ativos UNION ALL SELECT 'produtos', count(*) FROM produtos UNION ALL SELECT 'produto_principio_ativo', count(*) FROM produto_principio_ativo UNION ALL SELECT 'apresentacoes', count(*) FROM apresentacoes;" $REMOTE_FLAG
+npx wrangler d1 execute "$DB_NAME" --command="SELECT 'classes_terapeuticas' as tabela, count(*) as total FROM classes_terapeuticas UNION ALL SELECT 'principios_ativos', count(*) FROM principios_ativos UNION ALL SELECT 'apresentacoes', count(*) FROM apresentacoes;" $REMOTE_FLAG

@@ -7,6 +7,7 @@ Produz seed_data.sql com todos os INSERTs em batches.
 import csv
 import os
 import sys
+import sqlite3
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -31,12 +32,12 @@ def generate_inserts(table: str, rows: list[dict], columns: list[str], batch_siz
         for row in batch:
             vals = []
             for col in columns:
-                v = row.get(col, '').strip()
-                if v == '' or v.lower() == 'null':
+                v = row.get(col, '')
+                if v is None or v == '' or v.lower() == 'null' or v == '<NA>':
                     vals.append('NULL')
                 else:
+                    v = str(v).strip()
                     try:
-                        # Try numeric
                         if '.' in v:
                             float(v)
                             vals.append(v)
@@ -56,62 +57,53 @@ def generate_inserts(table: str, rows: list[dict], columns: list[str], batch_siz
 
 def main():
     output_file = os.path.join(SCRIPT_DIR, 'seed_data.sql')
+    db_file = os.path.join(SCRIPT_DIR, 'medicamentos.db')
+    schema_file = os.path.join(SCRIPT_DIR, 'schema.sql')
     
     all_stmts = []
     
     # 1. Classes terapêuticas
     print("Processando classes_terapeuticas.csv...")
-    rows = read_csv('classes_terapeuticas.csv')
-    stmts = generate_inserts('classes_terapeuticas', rows, ['id', 'codigo', 'descricao'])
+    rows_class = read_csv('classes_terapeuticas.csv')
+    stmts = generate_inserts('classes_terapeuticas', rows_class, ['id', 'codigo', 'descricao'])
     all_stmts.extend(stmts)
-    print(f"  → {len(rows)} linhas, {len(stmts)} batches")
+    print(f"  → {len(rows_class)} linhas, {len(stmts)} batches")
     
     # 2. Princípios ativos
     print("Processando principios_ativos.csv...")
-    rows = read_csv('principios_ativos.csv')
-    stmts = generate_inserts('principios_ativos', rows, ['id', 'nome'])
+    rows_pa = read_csv('principios_ativos.csv')
+    stmts = generate_inserts('principios_ativos', rows_pa, ['id', 'nome'])
     all_stmts.extend(stmts)
-    print(f"  → {len(rows)} linhas, {len(stmts)} batches")
+    print(f"  → {len(rows_pa)} linhas, {len(stmts)} batches")
     
-    # 3. Produtos
-    print("Processando produtos.csv...")
-    rows = read_csv('produtos.csv')
-    stmts = generate_inserts('produtos', rows, ['id', 'nome_comercial', 'substancia_raw', 'tipo_produto'])
-    all_stmts.extend(stmts)
-    print(f"  → {len(rows)} linhas, {len(stmts)} batches")
-    
-    # 4. Produto-princípio ativo
-    print("Processando produto_principio_ativo.csv...")
-    rows = read_csv('produto_principio_ativo.csv')
-    stmts = generate_inserts('produto_principio_ativo', rows, ['produto_id', 'principio_ativo_id', 'ordem'])
-    all_stmts.extend(stmts)
-    print(f"  → {len(rows)} linhas, {len(stmts)} batches")
-    
-    # 5. Apresentações
+    # 3. Apresentações
     print("Processando apresentacoes.csv...")
-    rows = read_csv('apresentacoes.csv')
-    cols = [
-        'id', 'produto_id', 'classe_terapeutica_id', 'apresentacao_texto',
-        'concentracao', 'forma_farmaceutica', 'forma_farmaceutica_sigla',
-        'via_administracao', 'quantidade_apresentacao', 'unidade_apresentacao',
-        'volume_apresentacao', 'dose_por_aplicacao', 'numero_doses',
-        'preco_pmc_23_alc', 'status_parser'
-    ]
-    stmts = generate_inserts('apresentacoes', rows, cols)
+    rows_apr = read_csv('apresentacoes.csv')
+    cols_apr = ['id', 'principio_ativo_id', 'classe_terapeutica_id', 'concentracao', 'forma_farmaceutica', 'via_administracao']
+    stmts = generate_inserts('apresentacoes', rows_apr, cols_apr)
     all_stmts.extend(stmts)
-    print(f"  → {len(rows)} linhas, {len(stmts)} batches")
+    print(f"  → {len(rows_apr)} linhas, {len(stmts)} batches")
     
-    # Write output
+    # Escrever seed_data.sql
     with open(output_file, 'w', encoding='utf-8') as f:
-        f.write("-- Seed data for medicamentos tables\n")
-        f.write("-- Generated automatically by generate_seed_sql.py\n\n")
+        f.write("-- Seed data para medicina-app-db\n\n")
         for stmt in all_stmts:
             f.write(stmt + "\n\n")
+    print(f"✅ {output_file} gerado com {len(all_stmts)} batches.")
     
-    total_size = os.path.getsize(output_file)
-    print(f"\n✅ Gerado: {output_file}")
-    print(f"   Tamanho: {total_size / 1024 / 1024:.2f} MB")
-    print(f"   Total de batches: {len(all_stmts)}")
+    # Atualizar SQLite local (medicamentos.db)
+    if os.path.exists(db_file):
+        os.remove(db_file)
+    
+    conn = sqlite3.connect(db_file)
+    with open(schema_file, 'r', encoding='utf-8') as f:
+        conn.executescript(f.read())
+    
+    with open(output_file, 'r', encoding='utf-8') as f:
+        conn.executescript(f.read())
+    conn.commit()
+    conn.close()
+    print(f"✅ {db_file} recriado com sucesso.")
 
 if __name__ == '__main__':
     main()

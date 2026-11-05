@@ -85,6 +85,12 @@
 			>
 				<span class="icon">🔑</span> Alterar Senha
 			</button>
+			<a href="/admin/medicamentos" class="btn-secondary">
+				<span class="icon">💊</span> Medicamentos
+			</a>
+			<a href="/admin/exames-laboratoriais" class="btn-secondary">
+				<span class="icon">🧪</span> Exames Lab
+			</a>
 			<a href="/admin/monitoramento" class="btn-secondary">
 				<span class="icon">📊</span> Painel de Uso
 			</a>

@@ -1,7 +1,32 @@
 import { hashPassword } from './crypto';
 import { ESF_SEED_DATA } from './esfSeedData';
+import { EXAMES_CATALOGO } from '$lib/data/examesCatalogo';
 
 export type UserRole = 'admin' | 'med';
+
+export interface MedicationAdminRecord {
+	id: number;
+	principioAtivoId: number;
+	principioAtivo: string;
+	concentracao: string;
+	formaFarmaceutica: string;
+	viaAdministracao: string;
+	classeTerapeuticaId: number | null;
+	classeCodigo: string;
+	classeTerapeutica: string;
+}
+
+export interface LabExamRecord {
+	id: number;
+	material: string;
+	nome: string;
+	pacote: string;
+	unidade: string;
+	valoresReferencia: string;
+	active: number;
+	createdAt: string;
+	updatedAt: string;
+}
 
 export interface UserRecord {
 	id: string;
@@ -59,6 +84,62 @@ const memorySessions = new Map<string, SessionRecord>();
 const memoryHealthUnits = new Map<number, HealthUnitRecord>();
 let memoryHealthUnitNextId = 1;
 
+const memoryMedications = new Map<number, MedicationAdminRecord>();
+let memoryMedicationNextId = 1;
+let memoryPrincipioAtivoNextId = 1;
+let memoryClasseNextId = 1;
+
+const memoryLabExams = new Map<number, LabExamRecord>();
+let memoryLabExamNextId = 1;
+
+const INITIAL_MEDICATIONS_SEED = [
+	{ principioAtivo: 'Losartana Potássica', concentracao: '50 mg', formaFarmaceutica: 'Comprimido revestido', viaAdministracao: 'Oral', classeCodigo: 'C09CA01', classeTerapeutica: 'Anti-hipertensivos' },
+	{ principioAtivo: 'Hidroclorotiazida', concentracao: '25 mg', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'C03AA03', classeTerapeutica: 'Anti-hipertensivos' },
+	{ principioAtivo: 'Anlodipino (Besilato)', concentracao: '5 mg', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'C08CA01', classeTerapeutica: 'Anti-hipertensivos' },
+	{ principioAtivo: 'Enalapril (Maleato)', concentracao: '10 mg', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'C09AA02', classeTerapeutica: 'Anti-hipertensivos' },
+	{ principioAtivo: 'Atenolol', concentracao: '50 mg', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'C07AB03', classeTerapeutica: 'Anti-hipertensivos' },
+	{ principioAtivo: 'Carvedilol', concentracao: '6,25 mg', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'C07AG02', classeTerapeutica: 'Anti-hipertensivos' },
+	{ principioAtivo: 'Espironolactona', concentracao: '25 mg', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'C03DA01', classeTerapeutica: 'Anti-hipertensivos' },
+	{ principioAtivo: 'Furosemida', concentracao: '40 mg', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'C03CA01', classeTerapeutica: 'Anti-hipertensivos' },
+	{ principioAtivo: 'Metformina (Cloridrato)', concentracao: '850 mg', formaFarmaceutica: 'Comprimido revestido', viaAdministracao: 'Oral', classeCodigo: 'A10BA02', classeTerapeutica: 'Antidiabéticos / Hipoglicemiantes' },
+	{ principioAtivo: 'Metformina XR', concentracao: '500 mg', formaFarmaceutica: 'Comprimido de liberação prolongada', viaAdministracao: 'Oral', classeCodigo: 'A10BA02', classeTerapeutica: 'Antidiabéticos / Hipoglicemiantes' },
+	{ principioAtivo: 'Gliclazida MR', concentracao: '30 mg', formaFarmaceutica: 'Comprimido de liberação modificada', viaAdministracao: 'Oral', classeCodigo: 'A10BB09', classeTerapeutica: 'Antidiabéticos / Hipoglicemiantes' },
+	{ principioAtivo: 'Glibenclamida', concentracao: '5 mg', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'A10BB01', classeTerapeutica: 'Antidiabéticos / Hipoglicemiantes' },
+	{ principioAtivo: 'Dapagliflozina', concentracao: '10 mg', formaFarmaceutica: 'Comprimido revestido', viaAdministracao: 'Oral', classeCodigo: 'A10BK01', classeTerapeutica: 'Antidiabéticos / Hipoglicemiantes' },
+	{ principioAtivo: 'Insulina NPH Humana', concentracao: '100 UI/mL', formaFarmaceutica: 'Injetável', viaAdministracao: 'Subcutânea', classeCodigo: 'A10AC01', classeTerapeutica: 'Antidiabéticos / Hipoglicemiantes' },
+	{ principioAtivo: 'Insulina Regular Humana', concentracao: '100 UI/mL', formaFarmaceutica: 'Injetável', viaAdministracao: 'Subcutânea', classeCodigo: 'A10AB01', classeTerapeutica: 'Antidiabéticos / Hipoglicemiantes' },
+	{ principioAtivo: 'Sinvastatina', concentracao: '20 mg', formaFarmaceutica: 'Comprimido revestido', viaAdministracao: 'Oral', classeCodigo: 'C10AA01', classeTerapeutica: 'Hipolipemiantes / Estatinas' },
+	{ principioAtivo: 'Atorvastatina Cálcica', concentracao: '20 mg', formaFarmaceutica: 'Comprimido revestido', viaAdministracao: 'Oral', classeCodigo: 'C10AA05', classeTerapeutica: 'Hipolipemiantes / Estatinas' },
+	{ principioAtivo: 'Rosuvastatina Cálcica', concentracao: '10 mg', formaFarmaceutica: 'Comprimido revestido', viaAdministracao: 'Oral', classeCodigo: 'C10AA07', classeTerapeutica: 'Hipolipemiantes / Estatinas' },
+	{ principioAtivo: 'Ciprofibrato', concentracao: '100 mg', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'C10AB08', classeTerapeutica: 'Hipolipemiantes / Estatinas' },
+	{ principioAtivo: 'Ácido Acetilsalicílico (AAS)', concentracao: '100 mg', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'B01AC06', classeTerapeutica: 'Anticoagulantes / Antiagregantes' },
+	{ principioAtivo: 'Clopidogrel (Bissulfato)', concentracao: '75 mg', formaFarmaceutica: 'Comprimido revestido', viaAdministracao: 'Oral', classeCodigo: 'B01AC04', classeTerapeutica: 'Anticoagulantes / Antiagregantes' },
+	{ principioAtivo: 'Varfarina Sódica', concentracao: '5 mg', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'B01AA03', classeTerapeutica: 'Anticoagulantes / Antiagregantes' },
+	{ principioAtivo: 'Rivaroxabana', concentracao: '20 mg', formaFarmaceutica: 'Comprimido revestido', viaAdministracao: 'Oral', classeCodigo: 'B01AF01', classeTerapeutica: 'Anticoagulantes / Antiagregantes' },
+	{ principioAtivo: 'Omeprazol', concentracao: '20 mg', formaFarmaceutica: 'Cápsula', viaAdministracao: 'Oral', classeCodigo: 'A02BC01', classeTerapeutica: 'Protetores Gástricos / IBP' },
+	{ principioAtivo: 'Pantoprazol Sódico', concentracao: '40 mg', formaFarmaceutica: 'Comprimido revestido', viaAdministracao: 'Oral', classeCodigo: 'A02BC02', classeTerapeutica: 'Protetores Gástricos / IBP' },
+	{ principioAtivo: 'Levotiroxina Sódica', concentracao: '50 mcg', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'H03AA01', classeTerapeutica: 'Hormônios / Tireoide' },
+	{ principioAtivo: 'Levotiroxina Sódica', concentracao: '100 mcg', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'H03AA01', classeTerapeutica: 'Hormônios / Tireoide' },
+	{ principioAtivo: 'Sertralina (Cloridrato)', concentracao: '50 mg', formaFarmaceutica: 'Comprimido revestido', viaAdministracao: 'Oral', classeCodigo: 'N06AB06', classeTerapeutica: 'Psicotrópicos / Antidepressivos / Ansiolíticos' },
+	{ principioAtivo: 'Fluoxetina (Cloridrato)', concentracao: '20 mg', formaFarmaceutica: 'Cápsula', viaAdministracao: 'Oral', classeCodigo: 'N06AB03', classeTerapeutica: 'Psicotrópicos / Antidepressivos / Ansiolíticos' },
+	{ principioAtivo: 'Escitalopram (Oxalato)', concentracao: '10 mg', formaFarmaceutica: 'Comprimido revestido', viaAdministracao: 'Oral', classeCodigo: 'N06AB10', classeTerapeutica: 'Psicotrópicos / Antidepressivos / Ansiolíticos' },
+	{ principioAtivo: 'Amitriptilina (Cloridrato)', concentracao: '25 mg', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'N06AA09', classeTerapeutica: 'Psicotrópicos / Antidepressivos / Ansiolíticos' },
+	{ principioAtivo: 'Clonazepam', concentracao: '2,5 mg/mL', formaFarmaceutica: 'Gotas / Solução oral', viaAdministracao: 'Oral', classeCodigo: 'N03AE01', classeTerapeutica: 'Psicotrópicos / Antidepressivos / Ansiolíticos' },
+	{ principioAtivo: 'Dipirona Monoidratada', concentracao: '500 mg', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'N02BB02', classeTerapeutica: 'Analgésicos / Anti-inflamatórios (AINEs)' },
+	{ principioAtivo: 'Paracetamol', concentracao: '750 mg', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'N02BE01', classeTerapeutica: 'Analgésicos / Anti-inflamatórios (AINEs)' },
+	{ principioAtivo: 'Ibuprofeno', concentracao: '600 mg', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'M01AE01', classeTerapeutica: 'Analgésicos / Anti-inflamatórios (AINEs)' },
+	{ principioAtivo: 'Amoxicilina', concentracao: '500 mg', formaFarmaceutica: 'Cápsula', viaAdministracao: 'Oral', classeCodigo: 'J01CA04', classeTerapeutica: 'Antibióticos / Antimicrobianos' },
+	{ principioAtivo: 'Amoxicilina + Clavulanato de Potássio', concentracao: '875 mg + 125 mg', formaFarmaceutica: 'Comprimido revestido', viaAdministracao: 'Oral', classeCodigo: 'J01CR02', classeTerapeutica: 'Antibióticos / Antimicrobianos' },
+	{ principioAtivo: 'Azitromicina Di-hidratada', concentracao: '500 mg', formaFarmaceutica: 'Comprimido revestido', viaAdministracao: 'Oral', classeCodigo: 'J01FA10', classeTerapeutica: 'Antibióticos / Antimicrobianos' },
+	{ principioAtivo: 'Cefalexina', concentracao: '500 mg', formaFarmaceutica: 'Comprimido revestido', viaAdministracao: 'Oral', classeCodigo: 'J01DB01', classeTerapeutica: 'Antibióticos / Antimicrobianos' },
+	{ principioAtivo: 'Ciprofloxacino (Cloridrato)', concentracao: '500 mg', formaFarmaceutica: 'Comprimido revestido', viaAdministracao: 'Oral', classeCodigo: 'J01MA02', classeTerapeutica: 'Antibióticos / Antimicrobianos' },
+	{ principioAtivo: 'Salbutamol (Sulfato)', concentracao: '100 mcg/dose', formaFarmaceutica: 'Spray / Inalatório', viaAdministracao: 'Inalatória', classeCodigo: 'R03AC02', classeTerapeutica: 'Broncodilatadores / Respiratórios' },
+	{ principioAtivo: 'Beclometasona (Dipropionato)', concentracao: '250 mcg/dose', formaFarmaceutica: 'Spray / Inalatório', viaAdministracao: 'Inalatória', classeCodigo: 'R03BA01', classeTerapeutica: 'Broncodilatadores / Respiratórios' },
+	{ principioAtivo: 'Loratadina', concentracao: '10 mg', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'R06AX13', classeTerapeutica: 'Antialérgicos / Anti-histamínicos' },
+	{ principioAtivo: 'Carbonato de Cálcio + Colecalciferol', concentracao: '500 mg + 400 UI', formaFarmaceutica: 'Comprimido', viaAdministracao: 'Oral', classeCodigo: 'A12AX', classeTerapeutica: 'Suplementos / Vitaminas' },
+	{ principioAtivo: 'Sulfato Ferroso', concentracao: '40 mg Fe', formaFarmaceutica: 'Comprimido revestido', viaAdministracao: 'Oral', classeCodigo: 'B03AA07', classeTerapeutica: 'Suplementos / Vitaminas' }
+];
+
 // Pre-seed default demo users and health units if empty
 async function initDefaultUsers() {
 	if (memoryUsers.size === 0) {
@@ -105,6 +186,41 @@ async function initDefaultUsers() {
 				source: 'csv_import',
 				createdAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString()
+			});
+		}
+	}
+
+	if (memoryMedications.size === 0) {
+		for (const item of INITIAL_MEDICATIONS_SEED) {
+			const id = memoryMedicationNextId++;
+			memoryMedications.set(id, {
+				id,
+				principioAtivoId: memoryPrincipioAtivoNextId++,
+				principioAtivo: item.principioAtivo,
+				concentracao: item.concentracao,
+				formaFarmaceutica: item.formaFarmaceutica,
+				viaAdministracao: item.viaAdministracao,
+				classeTerapeuticaId: memoryClasseNextId++,
+				classeCodigo: item.classeCodigo,
+				classeTerapeutica: item.classeTerapeutica
+			});
+		}
+	}
+
+	if (memoryLabExams.size === 0) {
+		const now = new Date().toISOString();
+		for (const item of EXAMES_CATALOGO) {
+			const id = memoryLabExamNextId++;
+			memoryLabExams.set(id, {
+				id,
+				material: item.material,
+				nome: item.nome,
+				pacote: item.pacote,
+				unidade: item.unidade,
+				valoresReferencia: item.valoresReferencia,
+				active: 1,
+				createdAt: now,
+				updatedAt: now
 			});
 		}
 	}
@@ -250,6 +366,100 @@ export async function ensureD1Tables(db: any) {
 		}
 	} catch (e) {
 		console.error('Error seeding initial health units in D1:', e);
+	}
+
+	// 5. Medications tables (classes_terapeuticas, principios_ativos, apresentacoes)
+	try {
+		await db.prepare(`
+			CREATE TABLE IF NOT EXISTS classes_terapeuticas (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				codigo TEXT NOT NULL UNIQUE,
+				descricao TEXT
+			);
+		`).run();
+
+		await db.prepare(`
+			CREATE TABLE IF NOT EXISTS principios_ativos (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				nome TEXT NOT NULL UNIQUE
+			);
+		`).run();
+
+		await db.prepare(`
+			CREATE TABLE IF NOT EXISTS apresentacoes (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				principio_ativo_id INTEGER NOT NULL REFERENCES principios_ativos(id),
+				classe_terapeutica_id INTEGER REFERENCES classes_terapeuticas(id),
+				concentracao TEXT,
+				forma_farmaceutica TEXT,
+				via_administracao TEXT
+			);
+		`).run();
+
+		await db.prepare(`
+			CREATE INDEX IF NOT EXISTS idx_apresentacoes_pa ON apresentacoes(principio_ativo_id);
+		`).run();
+		await db.prepare(`
+			CREATE INDEX IF NOT EXISTS idx_principios_ativos_nome ON principios_ativos(nome);
+		`).run();
+
+		const medCountRow = await db.prepare('SELECT COUNT(*) as total FROM apresentacoes').first();
+		if (Number(medCountRow?.total || 0) === 0) {
+			for (const item of INITIAL_MEDICATIONS_SEED) {
+				await db.prepare('INSERT OR IGNORE INTO principios_ativos (nome) VALUES (?)').bind(item.principioAtivo).run();
+				const paRow = await db.prepare('SELECT id FROM principios_ativos WHERE nome = ?').bind(item.principioAtivo).first();
+
+				const codigo = item.classeCodigo || item.classeTerapeutica.substring(0, 12).toUpperCase().replace(/\s+/g, '_');
+				await db.prepare('INSERT OR IGNORE INTO classes_terapeuticas (codigo, descricao) VALUES (?, ?)').bind(codigo, item.classeTerapeutica).run();
+				const ctRow = await db.prepare('SELECT id FROM classes_terapeuticas WHERE codigo = ?').bind(codigo).first();
+
+				if (paRow?.id) {
+					await db.prepare(`
+						INSERT INTO apresentacoes (principio_ativo_id, classe_terapeutica_id, concentracao, forma_farmaceutica, via_administracao)
+						VALUES (?, ?, ?, ?, ?)
+					`).bind(paRow.id, ctRow?.id || null, item.concentracao, item.formaFarmaceutica, item.viaAdministracao).run();
+				}
+			}
+		}
+	} catch (e) {
+		console.error('Error ensuring medications tables in D1:', e);
+	}
+
+	// 6. Laboratory exams table
+	try {
+		await db.prepare(`
+			CREATE TABLE IF NOT EXISTS lab_exams (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				material TEXT NOT NULL,
+				nome TEXT NOT NULL,
+				pacote TEXT NOT NULL DEFAULT '',
+				unidade TEXT NOT NULL DEFAULT '',
+				valores_referencia TEXT NOT NULL DEFAULT '',
+				active INTEGER NOT NULL DEFAULT 1,
+				created_at TEXT NOT NULL DEFAULT (datetime('now')),
+				updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+			);
+		`).run();
+
+		await db.prepare(`
+			CREATE INDEX IF NOT EXISTS idx_lab_exams_nome ON lab_exams(nome);
+		`).run();
+
+		const labCountRow = await db.prepare('SELECT COUNT(*) as total FROM lab_exams').first();
+		if (Number(labCountRow?.total || 0) === 0) {
+			const stmt = db.prepare(`
+				INSERT INTO lab_exams (material, nome, pacote, unidade, valores_referencia, active)
+				VALUES (?, ?, ?, ?, ?, 1)
+			`);
+			const batch = EXAMES_CATALOGO.map((item) =>
+				stmt.bind(item.material, item.nome, item.pacote || '', item.unidade || '', item.valoresReferencia || '')
+			);
+			if (batch.length > 0) {
+				await db.batch(batch);
+			}
+		}
+	} catch (e) {
+		console.error('Error ensuring lab_exams table in D1:', e);
 	}
 }
 
@@ -1046,4 +1256,587 @@ export async function updateUserPassword(
 		}
 	}
 	return false;
+}
+
+// ============================================================================
+// MEDICATIONS (CATÁLOGO DE MEDICAMENTOS) CRUD
+// ============================================================================
+
+export async function getAllMedicationsAdmin(
+	platform: App.Platform | undefined,
+	options?: { search?: string; limit?: number }
+): Promise<{ medications: MedicationAdminRecord[]; totalCount: number }> {
+	const env = platform?.env as any;
+	const search = options?.search?.trim() || '';
+	const limit = options?.limit || 300;
+
+	if (env?.medicina_app_db) {
+		try {
+			const db = env.medicina_app_db;
+			await ensureD1Tables(db);
+
+			const countRow = await db.prepare('SELECT COUNT(*) as total FROM apresentacoes').first();
+			const totalCount = Number(countRow?.total || 0);
+
+			let rowsResult;
+			if (search) {
+				const pattern = `%${search}%`;
+				rowsResult = await db.prepare(`
+					SELECT
+						a.id,
+						a.principio_ativo_id as principioAtivoId,
+						pa.nome as principioAtivo,
+						COALESCE(a.concentracao, '') as concentracao,
+						COALESCE(a.forma_farmaceutica, '') as formaFarmaceutica,
+						COALESCE(a.via_administracao, '') as viaAdministracao,
+						a.classe_terapeutica_id as classeTerapeuticaId,
+						COALESCE(ct.codigo, '') as classeCodigo,
+						COALESCE(ct.descricao, '') as classeTerapeutica
+					FROM apresentacoes a
+					JOIN principios_ativos pa ON pa.id = a.principio_ativo_id
+					LEFT JOIN classes_terapeuticas ct ON ct.id = a.classe_terapeutica_id
+					WHERE pa.nome LIKE ? OR a.concentracao LIKE ? OR a.forma_farmaceutica LIKE ? OR ct.descricao LIKE ?
+					ORDER BY pa.nome ASC, a.concentracao ASC
+					LIMIT ?
+				`).bind(pattern, pattern, pattern, pattern, limit).all();
+			} else {
+				rowsResult = await db.prepare(`
+					SELECT
+						a.id,
+						a.principio_ativo_id as principioAtivoId,
+						pa.nome as principioAtivo,
+						COALESCE(a.concentracao, '') as concentracao,
+						COALESCE(a.forma_farmaceutica, '') as formaFarmaceutica,
+						COALESCE(a.via_administracao, '') as viaAdministracao,
+						a.classe_terapeutica_id as classeTerapeuticaId,
+						COALESCE(ct.codigo, '') as classeCodigo,
+						COALESCE(ct.descricao, '') as classeTerapeutica
+					FROM apresentacoes a
+					JOIN principios_ativos pa ON pa.id = a.principio_ativo_id
+					LEFT JOIN classes_terapeuticas ct ON ct.id = a.classe_terapeutica_id
+					ORDER BY a.id DESC
+					LIMIT ?
+				`).bind(limit).all();
+			}
+
+			return {
+				medications: (rowsResult.results || []) as MedicationAdminRecord[],
+				totalCount
+			};
+		} catch (e) {
+			console.error('Error fetching medications from D1:', e);
+		}
+	}
+
+	// Memory fallback
+	let list = Array.from(memoryMedications.values());
+	const totalCount = list.length;
+	if (search) {
+		const q = search.toLowerCase();
+		list = list.filter(
+			(m) =>
+				m.principioAtivo.toLowerCase().includes(q) ||
+				m.concentracao.toLowerCase().includes(q) ||
+				m.formaFarmaceutica.toLowerCase().includes(q) ||
+				m.classeTerapeutica.toLowerCase().includes(q)
+		);
+	}
+	list.sort((a, b) => a.principioAtivo.localeCompare(b.principioAtivo, 'pt-BR'));
+	return {
+		medications: list.slice(0, limit),
+		totalCount
+	};
+}
+
+export async function searchMedicationsCatalog(
+	platform: App.Platform | undefined,
+	query: string
+): Promise<{ medicamentos: any[]; principios_ativos: any[] }> {
+	const env = platform?.env as any;
+	const q = query.trim();
+	if (q.length < 2) return { medicamentos: [], principios_ativos: [] };
+
+	if (env?.medicina_app_db) {
+		try {
+			const db = env.medicina_app_db;
+			await ensureD1Tables(db);
+			const pattern = `%${q}%`;
+			const prefix = `${q}%`;
+
+			const { results } = await db
+				.prepare(
+					`SELECT
+						a.id,
+						pa.nome AS principio_ativo,
+						a.concentracao,
+						a.forma_farmaceutica,
+						a.via_administracao,
+						ct.codigo AS codigo_atc,
+						ct.descricao AS classe_terapeutica
+					FROM apresentacoes a
+					JOIN principios_ativos pa ON pa.id = a.principio_ativo_id
+					LEFT JOIN classes_terapeuticas ct ON ct.id = a.classe_terapeutica_id
+					WHERE pa.nome LIKE ?1 OR a.concentracao LIKE ?1 OR ct.descricao LIKE ?1
+					ORDER BY
+						CASE WHEN pa.nome LIKE ?2 THEN 0 ELSE 1 END,
+						pa.nome,
+						a.concentracao
+					LIMIT 30`
+				)
+				.bind(pattern, prefix)
+				.all();
+
+			const { results: paResults } = await db
+				.prepare(
+					`SELECT id, nome
+					FROM principios_ativos
+					WHERE nome LIKE ?1
+					ORDER BY
+						CASE WHEN nome LIKE ?2 THEN 0 ELSE 1 END,
+						nome
+					LIMIT 15`
+				)
+				.bind(pattern, prefix)
+				.all();
+
+			return {
+				medicamentos: results || [],
+				principios_ativos: paResults || []
+			};
+		} catch (e) {
+			console.error('Error searching medications in D1:', e);
+		}
+	}
+
+	// Memory fallback
+	const qLower = q.toLowerCase();
+	const allMeds = Array.from(memoryMedications.values());
+	const matched = allMeds
+		.filter(
+			(m) =>
+				m.principioAtivo.toLowerCase().includes(qLower) ||
+				m.concentracao.toLowerCase().includes(qLower) ||
+				m.classeTerapeutica.toLowerCase().includes(qLower)
+		)
+		.slice(0, 30)
+		.map((m) => ({
+			id: m.id,
+			principio_ativo: m.principioAtivo,
+			concentracao: m.concentracao,
+			forma_farmaceutica: m.formaFarmaceutica,
+			via_administracao: m.viaAdministracao,
+			codigo_atc: m.classeCodigo,
+			classe_terapeutica: m.classeTerapeutica
+		}));
+
+	const uniquePa = new Map<string, { id: number; nome: string }>();
+	for (const m of matched) {
+		if (!uniquePa.has(m.principio_ativo)) {
+			uniquePa.set(m.principio_ativo, { id: m.id, nome: m.principio_ativo });
+		}
+	}
+
+	return {
+		medicamentos: matched,
+		principios_ativos: Array.from(uniquePa.values()).slice(0, 15)
+	};
+}
+
+export async function createMedicationAdmin(
+	platform: App.Platform | undefined,
+	data: {
+		principioAtivo: string;
+		concentracao: string;
+		formaFarmaceutica: string;
+		viaAdministracao: string;
+		classeTerapeutica: string;
+		classeCodigo?: string;
+	}
+): Promise<MedicationAdminRecord> {
+	const paNome = data.principioAtivo.trim();
+	const conc = data.concentracao.trim();
+	const forma = data.formaFarmaceutica.trim();
+	const via = data.viaAdministracao.trim() || 'Oral';
+	const classeDesc = data.classeTerapeutica.trim() || 'Outros / Não classificado';
+	const codigo =
+		data.classeCodigo?.trim() ||
+		'CLS_' +
+			classeDesc
+				.normalize('NFD')
+				.replace(/[\u0300-\u036f]/g, '')
+				.replace(/[^a-zA-Z0-9]/g, '_')
+				.toUpperCase()
+				.substring(0, 16);
+
+	const env = platform?.env as any;
+	if (env?.medicina_app_db) {
+		try {
+			const db = env.medicina_app_db;
+			await ensureD1Tables(db);
+
+			await db.prepare('INSERT OR IGNORE INTO principios_ativos (nome) VALUES (?)').bind(paNome).run();
+			const paRow = await db.prepare('SELECT id FROM principios_ativos WHERE nome = ?').bind(paNome).first();
+			const paId = Number(paRow?.id || 1);
+
+			let ctRow = await db
+				.prepare('SELECT id, codigo, descricao FROM classes_terapeuticas WHERE LOWER(descricao) = LOWER(?) OR LOWER(codigo) = LOWER(?)')
+				.bind(classeDesc, codigo)
+				.first();
+			if (!ctRow) {
+				await db
+					.prepare('INSERT OR IGNORE INTO classes_terapeuticas (codigo, descricao) VALUES (?, ?)')
+					.bind(codigo, classeDesc)
+					.run();
+				ctRow = await db
+					.prepare('SELECT id, codigo, descricao FROM classes_terapeuticas WHERE codigo = ?')
+					.bind(codigo)
+					.first();
+			}
+			const ctId = ctRow?.id ? Number(ctRow.id) : null;
+
+			const res = await db
+				.prepare(
+					`INSERT INTO apresentacoes (principio_ativo_id, classe_terapeutica_id, concentracao, forma_farmaceutica, via_administracao)
+					 VALUES (?, ?, ?, ?, ?)`
+				)
+				.bind(paId, ctId, conc, forma, via)
+				.run();
+
+			const newId = Number(res.meta?.last_row_id || 0);
+			return {
+				id: newId,
+				principioAtivoId: paId,
+				principioAtivo: paNome,
+				concentracao: conc,
+				formaFarmaceutica: forma,
+				viaAdministracao: via,
+				classeTerapeuticaId: ctId,
+				classeCodigo: String(ctRow?.codigo || codigo),
+				classeTerapeutica: String(ctRow?.descricao || classeDesc)
+			};
+		} catch (e) {
+			console.error('Error creating medication in D1:', e);
+		}
+	}
+
+	// Memory fallback
+	const id = memoryMedicationNextId++;
+	const record: MedicationAdminRecord = {
+		id,
+		principioAtivoId: memoryPrincipioAtivoNextId++,
+		principioAtivo: paNome,
+		concentracao: conc,
+		formaFarmaceutica: forma,
+		viaAdministracao: via,
+		classeTerapeuticaId: memoryClasseNextId++,
+		classeCodigo: codigo,
+		classeTerapeutica: classeDesc
+	};
+	memoryMedications.set(id, record);
+	return record;
+}
+
+export async function updateMedicationAdmin(
+	platform: App.Platform | undefined,
+	id: number,
+	data: {
+		principioAtivo: string;
+		concentracao: string;
+		formaFarmaceutica: string;
+		viaAdministracao: string;
+		classeTerapeutica: string;
+		classeCodigo?: string;
+	}
+): Promise<MedicationAdminRecord | null> {
+	const paNome = data.principioAtivo.trim();
+	const conc = data.concentracao.trim();
+	const forma = data.formaFarmaceutica.trim();
+	const via = data.viaAdministracao.trim() || 'Oral';
+	const classeDesc = data.classeTerapeutica.trim() || 'Outros / Não classificado';
+	const codigo =
+		data.classeCodigo?.trim() ||
+		'CLS_' +
+			classeDesc
+				.normalize('NFD')
+				.replace(/[\u0300-\u036f]/g, '')
+				.replace(/[^a-zA-Z0-9]/g, '_')
+				.toUpperCase()
+				.substring(0, 16);
+
+	const env = platform?.env as any;
+	if (env?.medicina_app_db) {
+		try {
+			const db = env.medicina_app_db;
+			await ensureD1Tables(db);
+
+			await db.prepare('INSERT OR IGNORE INTO principios_ativos (nome) VALUES (?)').bind(paNome).run();
+			const paRow = await db.prepare('SELECT id FROM principios_ativos WHERE nome = ?').bind(paNome).first();
+			const paId = Number(paRow?.id || 1);
+
+			let ctRow = await db
+				.prepare('SELECT id, codigo, descricao FROM classes_terapeuticas WHERE LOWER(descricao) = LOWER(?) OR LOWER(codigo) = LOWER(?)')
+				.bind(classeDesc, codigo)
+				.first();
+			if (!ctRow) {
+				await db
+					.prepare('INSERT OR IGNORE INTO classes_terapeuticas (codigo, descricao) VALUES (?, ?)')
+					.bind(codigo, classeDesc)
+					.run();
+				ctRow = await db
+					.prepare('SELECT id, codigo, descricao FROM classes_terapeuticas WHERE codigo = ?')
+					.bind(codigo)
+					.first();
+			}
+			const ctId = ctRow?.id ? Number(ctRow.id) : null;
+
+			await db
+				.prepare(
+					`UPDATE apresentacoes
+					 SET principio_ativo_id = ?, classe_terapeutica_id = ?, concentracao = ?, forma_farmaceutica = ?, via_administracao = ?
+					 WHERE id = ?`
+				)
+				.bind(paId, ctId, conc, forma, via, id)
+				.run();
+
+			return {
+				id,
+				principioAtivoId: paId,
+				principioAtivo: paNome,
+				concentracao: conc,
+				formaFarmaceutica: forma,
+				viaAdministracao: via,
+				classeTerapeuticaId: ctId,
+				classeCodigo: String(ctRow?.codigo || codigo),
+				classeTerapeutica: String(ctRow?.descricao || classeDesc)
+			};
+		} catch (e) {
+			console.error('Error updating medication in D1:', e);
+		}
+	}
+
+	const existing = memoryMedications.get(id);
+	if (!existing) return null;
+	const updated: MedicationAdminRecord = {
+		...existing,
+		principioAtivo: paNome,
+		concentracao: conc,
+		formaFarmaceutica: forma,
+		viaAdministracao: via,
+		classeCodigo: codigo,
+		classeTerapeutica: classeDesc
+	};
+	memoryMedications.set(id, updated);
+	return updated;
+}
+
+export async function deleteMedicationAdmin(
+	platform: App.Platform | undefined,
+	id: number
+): Promise<boolean> {
+	const env = platform?.env as any;
+	if (env?.medicina_app_db) {
+		try {
+			const db = env.medicina_app_db;
+			await ensureD1Tables(db);
+			await db.prepare('DELETE FROM apresentacoes WHERE id = ?').bind(id).run();
+			return true;
+		} catch (e) {
+			console.error('Error deleting medication in D1:', e);
+		}
+	}
+
+	return memoryMedications.delete(id);
+}
+
+// ============================================================================
+// LABORATORY EXAMS (CATÁLOGO DE EXAMES LABORATORIAIS) CRUD
+// ============================================================================
+
+export async function getAllLabExams(
+	platform: App.Platform | undefined,
+	onlyActive = false
+): Promise<LabExamRecord[]> {
+	const env = platform?.env as any;
+
+	if (env?.medicina_app_db) {
+		try {
+			const db = env.medicina_app_db;
+			await ensureD1Tables(db);
+			const query = onlyActive
+				? `SELECT id, material, nome, pacote, unidade, valores_referencia as valoresReferencia, active, created_at as createdAt, updated_at as updatedAt FROM lab_exams WHERE active = 1 ORDER BY nome ASC`
+				: `SELECT id, material, nome, pacote, unidade, valores_referencia as valoresReferencia, active, created_at as createdAt, updated_at as updatedAt FROM lab_exams ORDER BY nome ASC`;
+			const { results } = await db.prepare(query).all();
+			return (results || []) as LabExamRecord[];
+		} catch (e) {
+			console.error('Error fetching lab exams from D1:', e);
+		}
+	}
+
+	const list = Array.from(memoryLabExams.values());
+	const filtered = onlyActive ? list.filter((item) => item.active === 1) : list;
+	return filtered.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+export async function createLabExam(
+	platform: App.Platform | undefined,
+	data: {
+		material: string;
+		nome: string;
+		pacote?: string;
+		unidade?: string;
+		valoresReferencia?: string;
+		active?: number;
+	}
+): Promise<LabExamRecord> {
+	const now = new Date().toISOString();
+	const material = data.material.trim() || 'SANGUE';
+	const nome = data.nome.trim();
+	const pacote = (data.pacote || '').trim();
+	const unidade = (data.unidade || '').trim();
+	const valoresReferencia = (data.valoresReferencia || '').trim();
+	const active = data.active ?? 1;
+
+	const env = platform?.env as any;
+	if (env?.medicina_app_db) {
+		try {
+			const db = env.medicina_app_db;
+			await ensureD1Tables(db);
+			const res = await db
+				.prepare(
+					`INSERT INTO lab_exams (material, nome, pacote, unidade, valores_referencia, active, created_at, updated_at)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+				)
+				.bind(material, nome, pacote, unidade, valoresReferencia, active, now, now)
+				.run();
+
+			const newId = Number(res.meta?.last_row_id || 0);
+			return {
+				id: newId,
+				material,
+				nome,
+				pacote,
+				unidade,
+				valoresReferencia,
+				active,
+				createdAt: now,
+				updatedAt: now
+			};
+		} catch (e) {
+			console.error('Error creating lab exam in D1:', e);
+		}
+	}
+
+	const id = memoryLabExamNextId++;
+	const record: LabExamRecord = {
+		id,
+		material,
+		nome,
+		pacote,
+		unidade,
+		valoresReferencia,
+		active,
+		createdAt: now,
+		updatedAt: now
+	};
+	memoryLabExams.set(id, record);
+	return record;
+}
+
+export async function updateLabExam(
+	platform: App.Platform | undefined,
+	id: number,
+	data: Partial<{
+		material: string;
+		nome: string;
+		pacote: string;
+		unidade: string;
+		valoresReferencia: string;
+		active: number;
+	}>
+): Promise<LabExamRecord | null> {
+	const now = new Date().toISOString();
+	const env = platform?.env as any;
+
+	if (env?.medicina_app_db) {
+		try {
+			const db = env.medicina_app_db;
+			await ensureD1Tables(db);
+			const existing = (await db
+				.prepare(
+					`SELECT id, material, nome, pacote, unidade, valores_referencia as valoresReferencia, active, created_at as createdAt, updated_at as updatedAt FROM lab_exams WHERE id = ?`
+				)
+				.bind(id)
+				.first()) as LabExamRecord | null;
+			if (!existing) return null;
+
+			const updated: LabExamRecord = {
+				...existing,
+				material: data.material !== undefined ? data.material.trim() : existing.material,
+				nome: data.nome !== undefined ? data.nome.trim() : existing.nome,
+				pacote: data.pacote !== undefined ? data.pacote.trim() : existing.pacote,
+				unidade: data.unidade !== undefined ? data.unidade.trim() : existing.unidade,
+				valoresReferencia:
+					data.valoresReferencia !== undefined ? data.valoresReferencia.trim() : existing.valoresReferencia,
+				active: data.active !== undefined ? data.active : existing.active,
+				updatedAt: now
+			};
+
+			await db
+				.prepare(
+					`UPDATE lab_exams
+					 SET material = ?, nome = ?, pacote = ?, unidade = ?, valores_referencia = ?, active = ?, updated_at = ?
+					 WHERE id = ?`
+				)
+				.bind(
+					updated.material,
+					updated.nome,
+					updated.pacote,
+					updated.unidade,
+					updated.valoresReferencia,
+					updated.active,
+					updated.updatedAt,
+					id
+				)
+				.run();
+
+			return updated;
+		} catch (e) {
+			console.error('Error updating lab exam in D1:', e);
+		}
+	}
+
+	const existing = memoryLabExams.get(id);
+	if (!existing) return null;
+	const updated: LabExamRecord = {
+		...existing,
+		material: data.material !== undefined ? data.material.trim() : existing.material,
+		nome: data.nome !== undefined ? data.nome.trim() : existing.nome,
+		pacote: data.pacote !== undefined ? data.pacote.trim() : existing.pacote,
+		unidade: data.unidade !== undefined ? data.unidade.trim() : existing.unidade,
+		valoresReferencia:
+			data.valoresReferencia !== undefined ? data.valoresReferencia.trim() : existing.valoresReferencia,
+		active: data.active !== undefined ? data.active : existing.active,
+		updatedAt: now
+	};
+	memoryLabExams.set(id, updated);
+	return updated;
+}
+
+export async function deleteLabExam(
+	platform: App.Platform | undefined,
+	id: number
+): Promise<boolean> {
+	const env = platform?.env as any;
+	if (env?.medicina_app_db) {
+		try {
+			const db = env.medicina_app_db;
+			await ensureD1Tables(db);
+			await db.prepare('DELETE FROM lab_exams WHERE id = ?').bind(id).run();
+			return true;
+		} catch (e) {
+			console.error('Error deleting lab exam in D1:', e);
+		}
+	}
+
+	return memoryLabExams.delete(id);
 }

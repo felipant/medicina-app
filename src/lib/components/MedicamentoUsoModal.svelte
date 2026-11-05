@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { tick } from 'svelte';
+
 	export interface MedicamentoEmUso {
 		id: string;
 		principioAtivo: string;
@@ -15,18 +17,24 @@
 
 	let {
 		open = $bindable(false),
+		medicamentoParaEditar = null,
+		tituloModal = '',
 		onsave,
 		onclose
 	}: {
 		open: boolean;
+		medicamentoParaEditar?: MedicamentoEmUso | null;
+		tituloModal?: string;
 		onsave?: (med: MedicamentoEmUso) => void;
 		onclose?: () => void;
 	} = $props();
 
 	// Modal State
+	let searchInputEl: HTMLInputElement | null = $state(null);
 	let buscaQuery = $state('');
 	let resultadosBusca = $state<any[]>([]);
 	let isBuscando = $state(false);
+	let resultadoIndexAtivo = $state(0);
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 	// Form fields
@@ -104,6 +112,7 @@
 				if (res.ok) {
 					const data = (await res.json()) as { medicamentos?: any[]; principios_ativos?: any[] };
 					resultadosBusca = data.medicamentos || [];
+					resultadoIndexAtivo = 0;
 				}
 			} catch (err) {
 				console.error('Erro na busca de medicamentos:', err);
@@ -111,6 +120,31 @@
 				isBuscando = false;
 			}
 		}, 220);
+	}
+
+	function handleSearchKeydown(e: KeyboardEvent) {
+		if (resultadosBusca.length > 0) {
+			if (e.key === 'ArrowDown') {
+				e.preventDefault();
+				resultadoIndexAtivo = (resultadoIndexAtivo + 1) % resultadosBusca.length;
+				return;
+			}
+			if (e.key === 'ArrowUp') {
+				e.preventDefault();
+				resultadoIndexAtivo = (resultadoIndexAtivo - 1 + resultadosBusca.length) % resultadosBusca.length;
+				return;
+			}
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				const escolhido = resultadosBusca[resultadoIndexAtivo] || resultadosBusca[0];
+				if (escolhido) selecionarMedicamento(escolhido);
+				return;
+			}
+		} else if (e.key === 'Enter' && buscaQuery.trim()) {
+			e.preventDefault();
+			principioAtivo = buscaQuery.trim();
+			buscaQuery = '';
+		}
 	}
 
 	function selecionarMedicamento(item: any) {
@@ -154,15 +188,68 @@
 		return classeFarmaceutica;
 	});
 
-	function handleSalvar() {
-		if (!principioAtivo.trim()) {
+	$effect(() => {
+		if (open) {
+			tick().then(() => {
+				searchInputEl?.focus();
+			});
+		}
+	});
+
+	$effect(() => {
+		if (open && medicamentoParaEditar) {
+			principioAtivo = medicamentoParaEditar.principioAtivo || '';
+			concentracao = medicamentoParaEditar.concentracao || '';
+			if (medicamentoParaEditar.formaFarmaceutica) {
+				const formaMatch = FORMAS_COMUNS.find((f) => f === medicamentoParaEditar.formaFarmaceutica);
+				formaFarmaceutica = formaMatch || medicamentoParaEditar.formaFarmaceutica;
+			} else {
+				formaFarmaceutica = 'Comprimido';
+			}
+
+			if (medicamentoParaEditar.classeFarmaceutica) {
+				const classeMatch = CLASSES_COMUNS.find(
+					(c) => c !== 'Outra classe...' && c === medicamentoParaEditar.classeFarmaceutica
+				);
+				if (classeMatch) {
+					classeFarmaceutica = classeMatch;
+					classePersonalizada = '';
+				} else {
+					classeFarmaceutica = 'Outra classe...';
+					classePersonalizada = medicamentoParaEditar.classeFarmaceutica;
+				}
+			} else {
+				classeFarmaceutica = 'Anti-hipertensivos';
+				classePersonalizada = '';
+			}
+
+			modoPosologia = medicamentoParaEditar.tipoPosologia || 'xyz';
+			if (modoPosologia === 'xyz') {
+				doseManha = medicamentoParaEditar.horarioX ?? 1;
+				doseTarde = medicamentoParaEditar.horarioY ?? 0;
+				doseNoite = medicamentoParaEditar.horarioZ ?? 0;
+			} else if (modoPosologia === 'predefinido') {
+				intervaloPredefinido = medicamentoParaEditar.posologiaTexto || '1x ao dia';
+			} else {
+				posologiaPersonalizada = medicamentoParaEditar.posologiaTexto || '';
+			}
+			observacoes = medicamentoParaEditar.observacoes || '';
+		}
+	});
+
+	function construirMedicamento(): MedicamentoEmUso | null {
+		const paFinal = principioAtivo.trim() || buscaQuery.trim();
+		if (!paFinal) {
 			alert('Por favor, informe o princípio ativo do medicamento.');
-			return;
+			searchInputEl?.focus();
+			return null;
 		}
 
-		const novoMed: MedicamentoEmUso = {
-			id: 'med-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
-			principioAtivo: principioAtivo.trim(),
+		return {
+			id:
+				medicamentoParaEditar?.id ||
+				'med-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+			principioAtivo: paFinal,
 			concentracao: concentracao.trim(),
 			formaFarmaceutica: formaFarmaceutica,
 			classeFarmaceutica: classeFinal,
@@ -173,17 +260,12 @@
 			posologiaTexto: posologiaFormatada,
 			observacoes: observacoes.trim()
 		};
-
-		if (onsave) onsave(novoMed);
-		fecharModal();
 	}
 
-	function fecharModal() {
-		open = false;
-		if (onclose) onclose();
-		// Reset form
+	function resetarCampos() {
 		buscaQuery = '';
 		resultadosBusca = [];
+		resultadoIndexAtivo = 0;
 		principioAtivo = '';
 		concentracao = '';
 		formaFarmaceutica = 'Comprimido';
@@ -196,6 +278,31 @@
 		intervaloPredefinido = '1x ao dia';
 		posologiaPersonalizada = '';
 		observacoes = '';
+	}
+
+	function handleSalvar() {
+		const novoMed = construirMedicamento();
+		if (!novoMed) return;
+
+		if (onsave) onsave(novoMed);
+		fecharModal();
+	}
+
+	function handleSalvarEContinuar() {
+		const novoMed = construirMedicamento();
+		if (!novoMed) return;
+
+		if (onsave) onsave(novoMed);
+		resetarCampos();
+		tick().then(() => {
+			searchInputEl?.focus();
+		});
+	}
+
+	function fecharModal() {
+		open = false;
+		if (onclose) onclose();
+		resetarCampos();
 	}
 </script>
 
@@ -220,8 +327,14 @@
 						</svg>
 					</div>
 					<div>
-						<h2 class="modal-title">Adicionar Medicamento em Uso</h2>
-						<p class="modal-subtitle">Preencha o princípio ativo, posologia e classe terapêutica</p>
+						<h2 class="modal-title">
+							{tituloModal || (medicamentoParaEditar ? 'Editar Medicamento' : 'Adicionar Medicamento em Uso')}
+						</h2>
+						<p class="modal-subtitle">
+							{medicamentoParaEditar
+								? 'Ajuste a dose, forma farmacêutica, classe ou posologia do medicamento'
+								: 'Preencha o princípio ativo, posologia e classe terapêutica'}
+						</p>
 					</div>
 				</div>
 				<button type="button" class="btn-close" onclick={fecharModal} title="Fechar">✕</button>
@@ -238,11 +351,13 @@
 					<div class="search-input-group">
 						<input
 							id="modal-busca-med"
+							bind:this={searchInputEl}
 							type="text"
 							class="form-control search-input"
 							placeholder="Ex: Losartana, Metformina, Hidroclorotiazida..."
 							value={buscaQuery}
 							oninput={handleSearchInput}
+							onkeydown={handleSearchKeydown}
 						/>
 						{#if isBuscando}
 							<div class="search-spinner"></div>
@@ -254,10 +369,11 @@
 						<div class="search-dropdown fade-in">
 							<div class="search-dropdown-header">Resultados encontrados ({resultadosBusca.length}):</div>
 							<div class="search-dropdown-list">
-								{#each resultadosBusca as r}
+								{#each resultadosBusca as r, idx}
 									<button
 										type="button"
 										class="search-item-btn"
+										class:active={idx === resultadoIndexAtivo}
 										onclick={() => selecionarMedicamento(r)}
 									>
 										<div class="search-item-main">
@@ -493,11 +609,25 @@
 			<!-- Modal Footer -->
 			<div class="modal-footer">
 				<button type="button" class="btn-cancel" onclick={fecharModal}>Cancelar</button>
+				{#if !medicamentoParaEditar}
+					<button
+						type="button"
+						class="btn-save-next"
+						onclick={handleSalvarEContinuar}
+						title="Adicionar este medicamento e manter o pop-up aberto para o próximo"
+					>
+						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+							<line x1="12" y1="5" x2="12" y2="19"></line>
+							<line x1="5" y1="12" x2="19" y2="12"></line>
+						</svg>
+						<span>Adicionar e Próximo</span>
+					</button>
+				{/if}
 				<button type="button" class="btn-save" onclick={handleSalvar}>
 					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
 						<polyline points="20 6 9 17 4 12"></polyline>
 					</svg>
-					<span>Adicionar Medicamento</span>
+					<span>{medicamentoParaEditar ? 'Salvar Alterações' : 'Adicionar Medicamento'}</span>
 				</button>
 			</div>
 		</div>
@@ -678,7 +808,8 @@
 		transition: background 0.12s ease;
 	}
 
-	.search-item-btn:hover {
+	.search-item-btn:hover,
+	.search-item-btn.active {
 		background: #eff6ff;
 	}
 
@@ -1026,6 +1157,28 @@
 	.btn-cancel:hover {
 		background: #f1f5f9;
 		color: #0f172a;
+	}
+
+	.btn-save-next {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 8px 16px;
+		border: 1px solid #15803d;
+		border-radius: 8px;
+		background: #f0fdf4;
+		color: #166534;
+		font-family: 'Inter', sans-serif;
+		font-size: 13px;
+		font-weight: 700;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.btn-save-next:hover {
+		background: #dcfce7;
+		border-color: #166534;
+		color: #14532d;
 	}
 
 	.btn-save {

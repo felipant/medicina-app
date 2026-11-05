@@ -152,6 +152,51 @@
 			});
 			return list;
 		}
+		if (activeTab === "avaliacao") {
+			let secIndex = 1;
+			return [
+				{
+					id: "sec-sintese-avaliacao",
+					num: String(secIndex++).padStart(2, "0"),
+					label: "Raciocínio Clínico & Queixas",
+				},
+				{
+					id: "sec-hipoteses-diagnosticas",
+					num: String(secIndex++).padStart(2, "0"),
+					label: "Hipóteses Diagnósticas & CID",
+				},
+				{
+					id: "sec-escores-clinicos",
+					num: String(secIndex++).padStart(2, "0"),
+					label: "Escores & Estratificação",
+				},
+			];
+		}
+		if (activeTab === "plano") {
+			let secIndex = 1;
+			return [
+				{
+					id: "sec-prescricao",
+					num: String(secIndex++).padStart(2, "0"),
+					label: "Prescrição Medicamentosa",
+				},
+				{
+					id: "sec-solicitacao-exames",
+					num: String(secIndex++).padStart(2, "0"),
+					label: "Solicitação de Exames",
+				},
+				{
+					id: "sec-conduta-orientacoes",
+					num: String(secIndex++).padStart(2, "0"),
+					label: "Conduta & Orientações",
+				},
+				{
+					id: "sec-encaminhamentos-retorno",
+					num: String(secIndex++).padStart(2, "0"),
+					label: "Encaminhamentos & Retorno",
+				},
+			];
+		}
 		return [];
 	});
 
@@ -184,7 +229,42 @@
 	//  SUBJETIVO — 01 · Identificação (Form State)
 	// ══════════════════════════════════════════════════════════════
 	let nomePaciente = $state("");
+	let dataNascimento = $state("");
 	let ocupacao = $state("");
+
+	let primeiroNomePaciente = $derived.by(() => {
+		const trimmed = nomePaciente.trim();
+		if (!trimmed) return "";
+		return trimmed.split(/\s+/)[0] || "";
+	});
+
+	let idadeAnosNumero = $derived.by(() => {
+		if (!dataNascimento) return null;
+		const birth = new Date(dataNascimento + "T00:00:00");
+		if (isNaN(birth.getTime())) return null;
+		const today = new Date();
+		let years = today.getFullYear() - birth.getFullYear();
+		const m = today.getMonth() - birth.getMonth();
+		if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+			years--;
+		}
+		return years >= 0 && years <= 150 ? years : null;
+	});
+
+	let idadeCalculada = $derived.by(() => {
+		if (idadeAnosNumero === null) return "";
+		if (idadeAnosNumero === 0) {
+			const birth = new Date(dataNascimento + "T00:00:00");
+			const today = new Date();
+			let months =
+				(today.getFullYear() - birth.getFullYear()) * 12 +
+				(today.getMonth() - birth.getMonth());
+			if (today.getDate() < birth.getDate()) months--;
+			if (months <= 0) return "Recém-nascido";
+			return `${months} ${months === 1 ? "mês" : "meses"}`;
+		}
+		return `${idadeAnosNumero} ${idadeAnosNumero === 1 ? "ano" : "anos"}`;
+	});
 	let naturalidade = $state("");
 	let sexoBiologico = $state<"M" | "F" | "">("");
 	let genero = $state("");
@@ -301,9 +381,28 @@
 	let hppDoencasCronicas = $state("");
 	let medicamentosEmUso = $state<MedicamentoEmUso[]>([]);
 	let modalMedUsoOpen = $state(false);
+	let medEmUsoParaEditar = $state<MedicamentoEmUso | null>(null);
+
+	function abrirNovoMedicamentoUso() {
+		medEmUsoParaEditar = null;
+		modalMedUsoOpen = true;
+	}
+
+	function editarMedicamentoUso(med: MedicamentoEmUso) {
+		medEmUsoParaEditar = { ...med };
+		modalMedUsoOpen = true;
+	}
 
 	function adicionarMedicamento(med: MedicamentoEmUso) {
-		medicamentosEmUso = [...medicamentosEmUso, med];
+		const idx = medicamentosEmUso.findIndex((m) => m.id === med.id);
+		if (idx >= 0) {
+			const copia = [...medicamentosEmUso];
+			copia[idx] = med;
+			medicamentosEmUso = copia;
+		} else {
+			medicamentosEmUso = [...medicamentosEmUso, med];
+		}
+		medEmUsoParaEditar = null;
 	}
 
 	function removerMedicamento(id: string) {
@@ -968,9 +1067,76 @@
 	});
 
 	// ══════════════════════════════════════════════════════════════
-	//  AVALIAÇÃO — Avaliação / Raciocínio Clínico (Form State)
+	//  AVALIAÇÃO — Raciocínio Clínico, Hipóteses & Escores (Form State)
 	// ══════════════════════════════════════════════════════════════
 	let avaliacaoTexto = $state('');
+	let analisesPorQueixa = $state<Record<string, string>>({});
+	let queixaAbertaAvaliacao = $state<string | null>(null);
+
+	interface HipoteseDiagnosticaItem {
+		id: string;
+		cid: string;
+		descricao: string;
+		tipo: 'Principal' | 'Secundário / Comorbidade' | 'Diferencial' | 'Em Investigação';
+		observacoes?: string;
+	}
+
+	let hipotesesDiagnosticas = $state<HipoteseDiagnosticaItem[]>([]);
+	let novaHipoteseCid = $state('');
+	let novaHipoteseDesc = $state('');
+	let novaHipoteseTipo = $state<HipoteseDiagnosticaItem['tipo']>('Principal');
+	let novaHipoteseObs = $state('');
+
+	const CIDS_FREQUENTES = [
+		{ cid: 'I10', desc: 'Hipertensão essencial (primária)' },
+		{ cid: 'E11', desc: 'Diabetes mellitus não-insulino-dependente (Tipo 2)' },
+		{ cid: 'E78.5', desc: 'Hiperlipidemia não especificada (Dislipidemia)' },
+		{ cid: 'E66.9', desc: 'Obesidade não especificada' },
+		{ cid: 'E03.9', desc: 'Hipotireoidismo não especificado' },
+		{ cid: 'G43.9', desc: 'Enxaqueca (Migrânea), sem especificação' },
+		{ cid: 'G44.2', desc: 'Cefaleia tensional' },
+		{ cid: 'M54.5', desc: 'Dor lombar baixa (Lombalgia)' },
+		{ cid: 'K21.9', desc: 'Doença de refluxo gastroesofágico (DRGE)' },
+		{ cid: 'K29.7', desc: 'Gastrite não especificada' },
+		{ cid: 'J06.9', desc: 'Infecção aguda das vias aéreas superiores (IVAS)' },
+		{ cid: 'J45.9', desc: 'Asma não especificada' },
+		{ cid: 'J44.9', desc: 'Doença pulmonar obstrutiva crônica (DPOC)' },
+		{ cid: 'N39.0', desc: 'Infecção do trato urinário (ITU)' },
+		{ cid: 'F41.1', desc: 'Ansiedade generalizada (TAG)' },
+		{ cid: 'F32.9', desc: 'Episódio depressivo não especificado' },
+		{ cid: 'G47.0', desc: 'Distúrbios do início e da manutenção do sono (Insônia)' },
+		{ cid: 'I50.9', desc: 'Insuficiência cardíaca não especificada' },
+		{ cid: 'N18.9', desc: 'Doença renal crônica não especificada' },
+		{ cid: 'Z00.0', desc: 'Exame médico geral / Check-up de rotina' }
+	];
+
+	function selecionarCidSugerido(item: { cid: string; desc: string }) {
+		novaHipoteseCid = item.cid;
+		novaHipoteseDesc = item.desc;
+	}
+
+	function adicionarHipoteseDiagnostica() {
+		if (!novaHipoteseDesc.trim() && !novaHipoteseCid.trim()) return;
+		hipotesesDiagnosticas = [
+			...hipotesesDiagnosticas,
+			{
+				id: 'hd-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+				cid: novaHipoteseCid.trim().toUpperCase(),
+				descricao: novaHipoteseDesc.trim() || 'Hipótese diagnóstica',
+				tipo: novaHipoteseTipo,
+				observacoes: novaHipoteseObs.trim()
+			}
+		];
+		novaHipoteseCid = '';
+		novaHipoteseDesc = '';
+		novaHipoteseObs = '';
+	}
+
+	function removerHipoteseDiagnostica(id: string) {
+		hipotesesDiagnosticas = hipotesesDiagnosticas.filter((h) => h.id !== id);
+	}
+
+	let escoresRegistrados = $state('');
 
 	// Escores Clínicos — links para calculadoras externas
 	const escoresClinicos = [
@@ -989,14 +1155,170 @@
 	];
 
 	// ══════════════════════════════════════════════════════════════
-	//  PLANO — Prescrição Medicamentosa (Form State)
+	//  PLANO — Prescrição, Exames, Conduta & Retorno (Form State)
 	// ══════════════════════════════════════════════════════════════
 	let prescricaoMedicamentos = $state<MedicamentoEmUso[]>([]);
 	let modalPrescricaoOpen = $state(false);
+	let prescricaoParaEditar = $state<MedicamentoEmUso | null>(null);
 	let condutaTexto = $state('');
 
+	// Solicitação de Exames no Plano
+	let examesSolicitados = $state<string[]>([]);
+	let novoExameSolicitado = $state('');
+	let justificativaExamesSolicitados = $state('');
+
+	const PACOTES_EXAMES_SOLICITACAO: Record<string, string[]> = {
+		'Rotina / Check-up Geral': ['Hemograma completo', 'Glicemia de jejum', 'Creatinina sérica', 'Ureia', 'Colesterol total e frações', 'Triglicerídeos', 'TGO (AST) e TGP (ALT)', 'TSH', 'Urina rotina (EAS)'],
+		'Risco Cardiovascular / HAS / DM': ['Glicemia de jejum', 'Hemoglobina Glicada (HbA1c)', 'Colesterol total, HDL, LDL e Triglicerídeos', 'Creatinina sérica + TFG', 'Potássio sérico', 'Sódio sérico', 'Ácido úrico', 'Relação albumina/creatinina urinária', 'Eletrocardiograma (ECG) de repouso'],
+		'Avaliação Tireoidiana': ['TSH ultrassensível', 'T4 Livre', 'Anti-TPO'],
+		'Investigação de Anemia': ['Hemograma completo com reticulócitos', 'Ferro sérico', 'Ferritina', 'Capacidade total de ligação do ferro (TIBC)', 'Vitamina B12', 'Ácido fólico'],
+		'Função Hepática': ['TGO (AST)', 'TGP (ALT)', 'Gama-GT (GGT)', 'Fosfatase Alcalina', 'Bilirrubinas totais e frações', 'Albumina sérica', 'TAP / RNI'],
+		'Rastreamento / Imagem': ['Radiografia de Tórax (PA e Perfil)', 'Ultrassonografia de Abdome Total', 'Ecocardiograma Transtorácico', 'Mamografia bilateral', 'Citopatológico do colo uterino (Papanicolaou)']
+	};
+
+	function adicionarPacoteSolicitacao(itens: string[]) {
+		const setAtual = new Set(examesSolicitados);
+		for (const item of itens) {
+			setAtual.add(item);
+		}
+		examesSolicitados = Array.from(setAtual);
+	}
+
+	function adicionarExameSolicitadoManual() {
+		const val = novoExameSolicitado.trim();
+		if (!val) return;
+		if (!examesSolicitados.includes(val)) {
+			examesSolicitados = [...examesSolicitados, val];
+		}
+		novoExameSolicitado = '';
+	}
+
+	function removerExameSolicitado(exame: string) {
+		examesSolicitados = examesSolicitados.filter((e) => e !== exame);
+	}
+
+	// Orientações & Sinais de Alarme
+	let sinaisAlarmeOrientados = $state('');
+
+	const TEMPLATES_CONDUTA_RAPIDA = [
+		{
+			label: '🥗 MEV / Dieta Hipossódica e Exercícios',
+			texto: 'Orientada mudança do estilo de vida (MEV): dieta balanceada com restrição de sódio (<2g/dia) e ultraprocessados, controle de carboidratos simples, hidratação oral adequada e prática regular de atividade física aeróbica (mínimo 150 min/semana).'
+		},
+		{
+			label: '😴 Higiene do Sono',
+			texto: 'Orientadas medidas de higiene do sono: manter horários regulares para dormir e acordar, evitar telas luminosas 1h antes de deitar, evitar cafeína/estimulantes após as 16h e manter ambiente escuro e silencioso.'
+		},
+		{
+			label: '🚨 Sinais de Alarme Gerais',
+			texto: 'Orientados sinais de alarme para procura imediata de pronto-atendimento: dor torácica, dispneia súbita, febre persistente (>38,5°C), déficit neurológico focal, síncope, vômitos incoercíveis ou piora clínica importante.'
+		},
+		{
+			label: '💊 Adesão Medicamentosa',
+			texto: 'Reforçada importância da adesão rigorosa aos medicamentos de uso contínuo nos horários prescritos, evitando suspensão por conta própria.'
+		}
+	];
+
+	function inserirTemplateConduta(texto: string) {
+		condutaTexto = condutaTexto.trim() ? `${condutaTexto.trim()}\n• ${texto}` : `• ${texto}`;
+	}
+
+	// Encaminhamentos & Retorno
+	interface EncaminhamentoItem {
+		id: string;
+		especialidade: string;
+		prioridade: 'Eletivo' | 'Prioritário' | 'Urgência';
+		motivo: string;
+	}
+
+	let encaminhamentos = $state<EncaminhamentoItem[]>([]);
+	let novaEspEncaminhamento = $state('');
+	let novaPrioridadeEncaminhamento = $state<EncaminhamentoItem['prioridade']>('Eletivo');
+	let novoMotivoEncaminhamento = $state('');
+	let retornoPrazo = $state('');
+	let retornoObservacoes = $state('');
+
+	const PRAZOS_RETORNO = [
+		'48 a 72 horas (Reavaliação precoce)',
+		'7 dias',
+		'15 dias',
+		'30 dias (Com resultado de exames)',
+		'60 dias',
+		'90 dias (3 meses)',
+		'180 dias (6 meses)',
+		'1 ano (Rotina anual)',
+		'Se necessário / Sinais de alarme'
+	];
+
+	function adicionarEncaminhamento() {
+		if (!novaEspEncaminhamento.trim()) return;
+		encaminhamentos = [
+			...encaminhamentos,
+			{
+				id: 'enc-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+				especialidade: novaEspEncaminhamento.trim(),
+				prioridade: novaPrioridadeEncaminhamento,
+				motivo: novoMotivoEncaminhamento.trim()
+			}
+		];
+		novaEspEncaminhamento = '';
+		novoMotivoEncaminhamento = '';
+	}
+
+	function removerEncaminhamento(id: string) {
+		encaminhamentos = encaminhamentos.filter((e) => e.id !== id);
+	}
+
+	function abrirNovaPrescricao() {
+		prescricaoParaEditar = null;
+		modalPrescricaoOpen = true;
+	}
+
+	function editarPrescricao(med: MedicamentoEmUso) {
+		prescricaoParaEditar = { ...med };
+		modalPrescricaoOpen = true;
+	}
+
+	function importarMedicamentosUsoParaPrescricao() {
+		if (medicamentosEmUso.length === 0) {
+			showToast('Nenhum medicamento em uso contínuo cadastrado no Subjetivo.');
+			return;
+		}
+		let adicionados = 0;
+		const atuais = [...prescricaoMedicamentos];
+		for (const med of medicamentosEmUso) {
+			const jaExiste = atuais.some(
+				(p) =>
+					p.principioAtivo.toLowerCase() === med.principioAtivo.toLowerCase() &&
+					p.concentracao.toLowerCase() === med.concentracao.toLowerCase()
+			);
+			if (!jaExiste) {
+				atuais.push({
+					...med,
+					id: 'presc-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+					observacoes: med.observacoes ? `${med.observacoes} (Manter uso contínuo)` : 'Manter uso contínuo'
+				});
+				adicionados++;
+			}
+		}
+		prescricaoMedicamentos = atuais;
+		if (adicionados > 0) {
+			showToast(`${adicionados} medicamento(s) importado(s) para a prescrição!`);
+		} else {
+			showToast('Todos os medicamentos em uso já constam na prescrição.');
+		}
+	}
+
 	function adicionarPrescricao(med: MedicamentoEmUso) {
-		prescricaoMedicamentos = [...prescricaoMedicamentos, med];
+		const idx = prescricaoMedicamentos.findIndex((m) => m.id === med.id);
+		if (idx >= 0) {
+			const copia = [...prescricaoMedicamentos];
+			copia[idx] = med;
+			prescricaoMedicamentos = copia;
+		} else {
+			prescricaoMedicamentos = [...prescricaoMedicamentos, med];
+		}
+		prescricaoParaEditar = null;
 	}
 
 	function removerPrescricao(id: string) {
@@ -1026,7 +1348,7 @@
 	function getFormData() {
 		return {
 			// Identificação
-			nomePaciente, ocupacao, naturalidade, sexoBiologico, genero, generoOutro,
+			nomePaciente, dataNascimento, ocupacao, naturalidade, sexoBiologico, genero, generoOutro,
 			raca, racaOutro, estadoCivil, estadoCivilOutro, escolaridade, escolaridadeOutro,
 			religiao, religiaoOutro, nomeAcompanhante, parentescoAcompanhante, parentescoOutro,
 			// Queixa Principal & HMA
@@ -1067,9 +1389,10 @@
 			exameNeurologico, exameRespSuperior, exameRespInferior,
 			exameCardiovascular, exameDigestorio, exameGenitourinario, exameDermatologico,
 			// Avaliação
-			avaliacaoTexto,
+			avaliacaoTexto, analisesPorQueixa, hipotesesDiagnosticas, escoresRegistrados,
 			// Plano
-			prescricaoMedicamentos, condutaTexto,
+			prescricaoMedicamentos, condutaTexto, examesSolicitados, justificativaExamesSolicitados,
+			sinaisAlarmeOrientados, encaminhamentos, retornoPrazo, retornoObservacoes,
 		};
 	}
 
@@ -1092,6 +1415,7 @@
 			const d = JSON.parse(raw);
 			// Identificação
 			if (d.nomePaciente !== undefined) nomePaciente = d.nomePaciente;
+			if (d.dataNascimento !== undefined) dataNascimento = d.dataNascimento;
 			if (d.ocupacao !== undefined) ocupacao = d.ocupacao;
 			if (d.naturalidade !== undefined) naturalidade = d.naturalidade;
 			if (d.sexoBiologico !== undefined) sexoBiologico = d.sexoBiologico;
@@ -1207,9 +1531,18 @@
 			if (d.exameDermatologico !== undefined) exameDermatologico = d.exameDermatologico;
 			// Avaliação
 			if (d.avaliacaoTexto !== undefined) avaliacaoTexto = d.avaliacaoTexto;
+			if (d.analisesPorQueixa !== undefined) analisesPorQueixa = d.analisesPorQueixa;
+			if (d.hipotesesDiagnosticas !== undefined) hipotesesDiagnosticas = d.hipotesesDiagnosticas;
+			if (d.escoresRegistrados !== undefined) escoresRegistrados = d.escoresRegistrados;
 			// Plano
 			if (d.prescricaoMedicamentos !== undefined) prescricaoMedicamentos = d.prescricaoMedicamentos;
 			if (d.condutaTexto !== undefined) condutaTexto = d.condutaTexto;
+			if (d.examesSolicitados !== undefined) examesSolicitados = d.examesSolicitados;
+			if (d.justificativaExamesSolicitados !== undefined) justificativaExamesSolicitados = d.justificativaExamesSolicitados;
+			if (d.sinaisAlarmeOrientados !== undefined) sinaisAlarmeOrientados = d.sinaisAlarmeOrientados;
+			if (d.encaminhamentos !== undefined) encaminhamentos = d.encaminhamentos;
+			if (d.retornoPrazo !== undefined) retornoPrazo = d.retornoPrazo;
+			if (d.retornoObservacoes !== undefined) retornoObservacoes = d.retornoObservacoes;
 
 			saveStatus = 'ok';
 			saveTimestamp = 'Restaurado';
@@ -1222,7 +1555,7 @@
 		if (!confirm('Tem certeza que deseja limpar TODA a consulta? Esta ação não pode ser desfeita.')) return;
 		localStorage.removeItem(STORAGE_KEY);
 		// Reset all state
-		nomePaciente = ''; ocupacao = ''; naturalidade = ''; sexoBiologico = ''; genero = '';
+		nomePaciente = ''; dataNascimento = ''; ocupacao = ''; naturalidade = ''; sexoBiologico = ''; genero = '';
 		generoOutro = ''; raca = ''; racaOutro = ''; estadoCivil = ''; estadoCivilOutro = '';
 		escolaridade = ''; escolaridadeOutro = ''; religiao = ''; religiaoOutro = '';
 		nomeAcompanhante = ''; parentescoAcompanhante = ''; parentescoOutro = '';
@@ -1255,14 +1588,16 @@
 		genitaliaExterna = ''; genitaliaInterna = ''; palpacaoBimanual = '';
 		exameNeurologico = ''; exameRespSuperior = ''; exameRespInferior = '';
 		exameCardiovascular = ''; exameDigestorio = ''; exameGenitourinario = ''; exameDermatologico = '';
-		avaliacaoTexto = '';
-		prescricaoMedicamentos = []; condutaTexto = '';
+		avaliacaoTexto = ''; analisesPorQueixa = {}; hipotesesDiagnosticas = []; escoresRegistrados = '';
+		prescricaoMedicamentos = []; condutaTexto = ''; examesSolicitados = []; justificativaExamesSolicitados = '';
+		sinaisAlarmeOrientados = ''; encaminhamentos = []; retornoPrazo = ''; retornoObservacoes = '';
 		saveStatus = 'idle'; saveTimestamp = '';
 		activeTab = 'subjetivo';
 	}
 
 	function preencherAnamnesieFicticia() {
 		nomePaciente = 'Maria José da Silva';
+		dataNascimento = '1964-03-14';
 		ocupacao = 'Aposentado(a)';
 		naturalidade = 'Divinópolis - MG';
 		sexoBiologico = 'F';
@@ -1455,6 +1790,7 @@
 
 			const idParts: string[] = [];
 			if (nomePaciente.trim()) idParts.push(`Pct: ${nomePaciente.trim()}`);
+			if (idadeCalculada) idParts.push(`Idade: ${idadeCalculada}${dataNascimento ? ` (DN: ${dataNascimento.split('-').reverse().join('/')})` : ''}`);
 			if (sexoBiologico) idParts.push(`Sexo: ${sexoBiologico}${genero && genero !== sexoBiologico ? ` (${genero})` : ''}`);
 			if (ocupacao.trim()) idParts.push(`Ocup: ${ocupacao.trim()}`);
 			if (naturalidade.trim()) idParts.push(`Nat: ${naturalidade.trim()}`);
@@ -1640,8 +1976,28 @@
 			}
 
 			// ── A: AVALIAÇÃO ──
+			const aBlocks: string[] = [];
 			if (avaliacaoTexto.trim()) {
-				sections.push(`AVALIAÇÃO:\n\n${avaliacaoTexto.trim()}`);
+				aBlocks.push(`Raciocínio Clínico:\n${avaliacaoTexto.trim()}`);
+			}
+			const queixasComAnalise = Object.entries(analisesPorQueixa).filter(([_, txt]) => txt?.trim());
+			if (queixasComAnalise.length > 0) {
+				const qAnaliseLines = queixasComAnalise.map(([key, txt]) => `  • ${key}: ${txt.trim()}`);
+				aBlocks.push(`Análise por Queixa:\n${qAnaliseLines.join('\n')}`);
+			}
+			if (hipotesesDiagnosticas.length > 0) {
+				const hdLines = hipotesesDiagnosticas.map((h, idx) => {
+					const cidStr = h.cid ? `[${h.cid}] ` : '';
+					const obsStr = h.observacoes ? ` (${h.observacoes})` : '';
+					return `  ${idx + 1}. ${cidStr}${h.descricao} — ${h.tipo}${obsStr}`;
+				});
+				aBlocks.push(`Hipóteses Diagnósticas:\n${hdLines.join('\n')}`);
+			}
+			if (escoresRegistrados.trim()) {
+				aBlocks.push(`Escores / Estratificação:\n${escoresRegistrados.trim()}`);
+			}
+			if (aBlocks.length > 0) {
+				sections.push(`AVALIAÇÃO:\n\n${aBlocks.join('\n\n')}`);
 			}
 
 			// ── P: PLANO ──
@@ -1655,8 +2011,21 @@
 				});
 				pBlocks.push(`Prescrição:\n${rxLines.join('\n')}`);
 			}
+			if (examesSolicitados.length > 0) {
+				pBlocks.push(`Exames Solicitados: ${examesSolicitados.join(', ')}${justificativaExamesSolicitados.trim() ? ` (Indicação: ${justificativaExamesSolicitados.trim()})` : ''}`);
+			}
 			if (condutaTexto.trim()) {
-				pBlocks.push(`Conduta:\n${condutaTexto.trim()}`);
+				pBlocks.push(`Conduta & Orientações:\n${condutaTexto.trim()}`);
+			}
+			if (sinaisAlarmeOrientados.trim()) {
+				pBlocks.push(`Sinais de Alarme Orientados: ${sinaisAlarmeOrientados.trim()}`);
+			}
+			if (encaminhamentos.length > 0) {
+				const encLines = encaminhamentos.map((e) => `  • ${e.especialidade} (${e.prioridade})${e.motivo ? ` — ${e.motivo}` : ''}`);
+				pBlocks.push(`Encaminhamentos:\n${encLines.join('\n')}`);
+			}
+			if (retornoPrazo.trim() || retornoObservacoes.trim()) {
+				pBlocks.push(`Seguimento / Retorno: ${[retornoPrazo.trim(), retornoObservacoes.trim()].filter(Boolean).join(' — ')}`);
 			}
 
 			if (pBlocks.length > 0) {
@@ -1706,6 +2075,11 @@
 
 		const patientCells: string[] = [];
 		if (nomePaciente.trim()) patientCells.push(`<div class="print-cell print-cell-full"><strong>Paciente:</strong> ${escapeHtml(nomePaciente.trim())}</div>`);
+		if (dataNascimento || idadeCalculada) {
+			const dnFmt = dataNascimento ? dataNascimento.split('-').reverse().join('/') : '';
+			const idLabel = [dnFmt, idadeCalculada ? `(${idadeCalculada})` : ''].filter(Boolean).join(' ');
+			patientCells.push(`<div class="print-cell"><strong>Nascimento / Idade:</strong> ${escapeHtml(idLabel)}</div>`);
+		}
 		if (sexoBiologico) {
 			const sLabel = sexoBiologico === 'M' ? 'Masculino' : sexoBiologico === 'F' ? 'Feminino' : sexoBiologico;
 			const gLabel = genero && genero !== sexoBiologico ? ` (${escapeHtml(genero)})` : '';
@@ -2013,11 +2387,46 @@
 		}
 
 		// ── III. AVALIAÇÃO ──
+		let aHtml = '';
+		const avalFields: Array<{ label: string; val: string; isBlock?: boolean }> = [];
 		if (avaliacaoTexto.trim()) {
-			html += `
-				<div class="print-block-title">III. AVALIAÇÃO</div>
-				${renderSection('Avaliação Clínica & Hipóteses Diagnósticas', 'A1', [{ label: 'Avaliação / Raciocínio Clínico', val: avaliacaoTexto.trim(), isBlock: true }])}
+			avalFields.push({ label: 'Raciocínio Clínico / Síntese', val: avaliacaoTexto.trim(), isBlock: true });
+		}
+		const queixasComAnalise = Object.entries(analisesPorQueixa).filter(([_, txt]) => txt?.trim());
+		for (const [key, txt] of queixasComAnalise) {
+			avalFields.push({ label: `Análise — ${key}`, val: txt.trim(), isBlock: true });
+		}
+		aHtml += renderSection('Raciocínio Clínico & Análise por Queixa', 'A1', avalFields);
+
+		if (hipotesesDiagnosticas.length > 0) {
+			const hdRows = hipotesesDiagnosticas.map((h, i) => `
+				<tr>
+					<td><strong>${i + 1}. ${escapeHtml(h.cid ? `[${h.cid}] ` : '')}${escapeHtml(h.descricao)}</strong></td>
+					<td>${escapeHtml(h.tipo)}</td>
+					<td>${escapeHtml(h.observacoes || '—')}</td>
+				</tr>
+			`).join('');
+			const hdTable = `
+				<table class="print-table">
+					<thead>
+						<tr>
+							<th>Hipótese Diagnóstica / CID-10</th>
+							<th>Classificação</th>
+							<th>Observações</th>
+						</tr>
+					</thead>
+					<tbody>${hdRows}</tbody>
+				</table>
 			`;
+			aHtml += renderSection('Hipóteses Diagnósticas & CID-10', 'A2', [], hdTable);
+		}
+
+		if (escoresRegistrados.trim()) {
+			aHtml += renderSection('Estratificação de Risco & Escores', 'A3', [{ label: 'Escores Aplicados', val: escoresRegistrados.trim(), isBlock: true }]);
+		}
+
+		if (aHtml) {
+			html += `<div class="print-block-title">III. AVALIAÇÃO</div>${aHtml}`;
 		}
 
 		// ── IV. PLANO E CONDUTA ──
@@ -2047,9 +2456,42 @@
 			pHtml += renderSection('Prescrição Medicamentosa', 'P1', [], rxTableHtml);
 		}
 
-		if (condutaTexto.trim()) {
-			pHtml += renderSection('Conduta & Recomendações', 'P2', [{ label: 'Conduta Clínica / Orientações / Encaminhamentos', val: condutaTexto.trim(), isBlock: true }]);
+		if (examesSolicitados.length > 0 || justificativaExamesSolicitados.trim()) {
+			const exFields: Array<{ label: string; val: string; isBlock?: boolean }> = [];
+			if (examesSolicitados.length > 0) {
+				exFields.push({ label: 'Exames Solicitados', val: examesSolicitados.join(', '), isBlock: true });
+			}
+			if (justificativaExamesSolicitados.trim()) {
+				exFields.push({ label: 'Justificativa / Indicação Clínica', val: justificativaExamesSolicitados.trim(), isBlock: true });
+			}
+			pHtml += renderSection('Solicitação de Exames & Procedimentos', 'P2', exFields);
 		}
+
+		const condFields: Array<{ label: string; val: string; isBlock?: boolean }> = [];
+		if (condutaTexto.trim()) {
+			condFields.push({ label: 'Conduta Clínica & Orientações', val: condutaTexto.trim(), isBlock: true });
+		}
+		if (sinaisAlarmeOrientados.trim()) {
+			condFields.push({ label: 'Sinais de Alarme Orientados', val: sinaisAlarmeOrientados.trim(), isBlock: true });
+		}
+		pHtml += renderSection('Conduta & Recomendações', 'P3', condFields);
+
+		const encRetFields: Array<{ label: string; val: string; isBlock?: boolean }> = [];
+		if (encaminhamentos.length > 0) {
+			encRetFields.push({
+				label: 'Encaminhamentos',
+				val: encaminhamentos.map((e) => `${e.especialidade} (${e.prioridade})${e.motivo ? ` — ${e.motivo}` : ''}`).join('; '),
+				isBlock: true
+			});
+		}
+		if (retornoPrazo.trim() || retornoObservacoes.trim()) {
+			encRetFields.push({
+				label: 'Plano de Seguimento / Retorno',
+				val: [retornoPrazo.trim(), retornoObservacoes.trim()].filter(Boolean).join(' — '),
+				isBlock: true
+			});
+		}
+		pHtml += renderSection('Encaminhamentos & Seguimento', 'P4', encRetFields);
 
 		if (pHtml) {
 			html += `<div class="print-block-title">IV. PLANO E CONDUTA</div>${pHtml}`;
@@ -2065,7 +2507,7 @@
 		</div>
 		`;
 
-		if (!patientCells.length && !sHtml && !oHtml && !avaliacaoTexto.trim() && !pHtml) {
+		if (!patientCells.length && !sHtml && !oHtml && !aHtml && !pHtml) {
 			showToast('Nenhum campo preenchido para exportar em PDF');
 			return;
 		}
@@ -2144,6 +2586,39 @@
 				<span class="brand-title">Anamnese Adulto</span>
 				<span class="brand-badge">SOAP</span>
 			</div>
+
+			<!-- Identificação fixa do paciente (Primeiro Nome + Idade a todo tempo) -->
+			<button
+				type="button"
+				class="topbar-patient-pill"
+				class:filled={Boolean(primeiroNomePaciente || idadeCalculada)}
+				onclick={() => {
+					activeTab = "subjetivo";
+					setTimeout(() => scrollToSection("sec-identificacao"), 50);
+				}}
+				title="Clique para ir à Identificação do Paciente"
+			>
+				<svg
+					width="14"
+					height="14"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2.2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+					<circle cx="12" cy="7" r="4"></circle>
+				</svg>
+				<span class="patient-pill-name">
+					{primeiroNomePaciente || "Paciente"}
+				</span>
+				<span class="patient-pill-sep">•</span>
+				<span class="patient-pill-age">
+					{idadeCalculada || "Idade —"}
+				</span>
+			</button>
 		</div>
 
 		<!-- Main 4 Tabs Navigation -->
@@ -2270,8 +2745,10 @@
 							<div class="section-actions">
 								<span class="section-status-badge">
 									{nomePaciente
-										? nomePaciente
-										: "Não preenchido"}
+										? `${nomePaciente}${idadeCalculada ? ` · ${idadeCalculada}` : ""}`
+										: idadeCalculada
+											? idadeCalculada
+											: "Não preenchido"}
 								</span>
 								<svg
 									class="chevron-icon"
@@ -2293,7 +2770,7 @@
 							<div class="section-body">
 								<div class="form-grid">
 									<!-- 1. Nome -->
-									<div class="form-group span-2">
+									<div class="form-group">
 										<label
 											for="id-nome"
 											class="form-label required"
@@ -2306,6 +2783,38 @@
 											placeholder="Digite o nome completo do paciente..."
 											bind:value={nomePaciente}
 										/>
+									</div>
+
+									<!-- Data de Nascimento & Idade Automática -->
+									<div class="form-group">
+										<label
+											for="id-data-nasc"
+											class="form-label"
+										>
+											Data de nascimento
+											<span class="label-hint"
+												>(calcula idade automaticamente)</span
+											>
+										</label>
+										<div class="dob-age-row">
+											<input
+												id="id-data-nasc"
+												type="date"
+												class="form-control dob-input"
+												max={new Date().toISOString().split("T")[0]}
+												bind:value={dataNascimento}
+											/>
+											<div
+												class="age-computed-badge"
+												class:active={Boolean(idadeCalculada)}
+												title="Idade calculada automaticamente a partir da data de nascimento"
+											>
+												<span class="age-badge-label">Idade:</span>
+												<strong class="age-badge-val">
+													{idadeCalculada || "—"}
+												</strong>
+											</div>
+										</div>
 									</div>
 
 									<!-- 2. Ocupação -->
@@ -3755,8 +4264,7 @@
 										<button
 											type="button"
 											class="btn-add-med"
-											onclick={() =>
-												(modalMedUsoOpen = true)}
+											onclick={abrirNovoMedicamentoUso}
 										>
 											<svg
 												width="15"
@@ -3866,34 +4374,60 @@
 																	{/if}
 																</div>
 
-																<button
-																	type="button"
-																	class="btn-remove-med"
-																	onclick={() =>
-																		removerMedicamento(
-																			m.id,
-																		)}
-																	title="Remover medicamento"
-																>
-																	<svg
-																		width="15"
-																		height="15"
-																		viewBox="0 0 24 24"
-																		fill="none"
-																		stroke="currentColor"
-																		stroke-width="2"
-																		stroke-linecap="round"
-																		stroke-linejoin="round"
+																<div class="med-card-actions">
+																	<button
+																		type="button"
+																		class="btn-edit-med"
+																		onclick={() =>
+																			editarMedicamentoUso(
+																				m,
+																			)}
+																		title="Editar medicamento"
 																	>
-																		<polyline
-																			points="3 6 5 6 21 6"
+																		<svg
+																			width="14"
+																			height="14"
+																			viewBox="0 0 24 24"
+																			fill="none"
+																			stroke="currentColor"
+																			stroke-width="2"
+																			stroke-linecap="round"
+																			stroke-linejoin="round"
+																		>
+																			<path d="M12 20h9"></path>
+																			<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+																		</svg>
+																	</button>
 
-																		></polyline>
-																		<path
-																			d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
-																		></path>
-																	</svg>
-																</button>
+																	<button
+																		type="button"
+																		class="btn-remove-med"
+																		onclick={() =>
+																			removerMedicamento(
+																				m.id,
+																			)}
+																		title="Remover medicamento"
+																	>
+																		<svg
+																			width="15"
+																			height="15"
+																			viewBox="0 0 24 24"
+																			fill="none"
+																			stroke="currentColor"
+																			stroke-width="2"
+																			stroke-linecap="round"
+																			stroke-linejoin="round"
+																		>
+																			<polyline
+																				points="3 6 5 6 21 6"
+
+																			></polyline>
+																			<path
+																				d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+																			></path>
+																		</svg>
+																	</button>
+																</div>
 															</div>
 														{/each}
 													</div>
@@ -6848,107 +7382,436 @@
 						<div>
 							<h1 class="tab-title">Avaliação</h1>
 							<p class="tab-subtitle">
-								Raciocínio clínico, hipóteses diagnósticas
-								(principais e diferenciais) e estratificação de
-								risco.
+								Raciocínio clínico estruturado, análise por queixa, hipóteses diagnósticas (CID-10) e estratificação de risco.
 							</p>
 						</div>
 					</div>
 
-					<!-- Escores Clínicos -->
-					<section class="form-section">
-						<div class="section-header-row">
-							<div class="section-icon aval-accent">
-								<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+					<!-- ── SEÇÃO 01 · RACIOCÍNIO CLÍNICO & ANÁLISE POR QUEIXA ── -->
+					<section
+						class="section-card"
+						id="sec-sintese-avaliacao"
+						class:collapsed={collapsedSections.has("sec-sintese-avaliacao")}
+					>
+						<div
+							class="section-header"
+							role="button"
+							tabindex="0"
+							onclick={() => toggleSection("sec-sintese-avaliacao")}
+							onkeydown={(e) => {
+								if (e.key === "Enter" || e.key === " ") {
+									e.preventDefault();
+									toggleSection("sec-sintese-avaliacao");
+								}
+							}}
+						>
+							<div class="section-title-wrap">
+								<span class="section-num aval">01</span>
+								<h2 class="section-title">Raciocínio Clínico & Análise por Queixa</h2>
 							</div>
-							<div>
-								<h2 class="section-title">Escores Clínicos</h2>
-								<p class="section-desc">Calculadoras de escores e estratificação de risco — links externos (MDCalc)</p>
+							<div class="section-actions">
+								<span class="section-status-badge">
+									{avaliacaoTexto.trim() || Object.values(analisesPorQueixa).some((v) => v?.trim())
+										? "Preenchido"
+										: "Não preenchido"}
+								</span>
+								<svg
+									class="chevron-icon"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2.2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
+									<polyline points="6 9 12 15 18 9"></polyline>
+								</svg>
 							</div>
 						</div>
 
-						<div class="escores-grid">
-							{#each escoresClinicos as escore}
-								<a
-									href={escore.url}
-									target="_blank"
-									rel="noopener noreferrer"
-									class="escore-card"
-									style="--escore-color: {escore.cor}"
-								>
-									<div class="escore-card-icon">
-										<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+						{#if !collapsedSections.has("sec-sintese-avaliacao")}
+							<div class="section-body">
+								<div class="avaliacao-layout">
+									<div class="avaliacao-editor">
+										<label for="id-avaliacao-texto" class="form-label">
+											Síntese do Caso & Raciocínio Clínico Global
+										</label>
+										<textarea
+											id="id-avaliacao-texto"
+											class="form-textarea avaliacao-textarea"
+											rows="12"
+											placeholder="Descreva sua avaliação clínica: síntese do caso, correlação clínico-laboratorial, evolução dos sintomas e impressão diagnóstica..."
+											bind:value={avaliacaoTexto}
+										></textarea>
 									</div>
-									<div class="escore-card-info">
-										<span class="escore-nome">{escore.nome}</span>
-										<span class="escore-desc">{escore.descricao}</span>
-									</div>
-									<svg class="escore-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>
-								</a>
-							{/each}
-						</div>
+
+									<aside class="queixas-sidebar">
+										<div class="queixas-sidebar-header">
+											<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+											<span>Monitor de Queixas (Subjetivo)</span>
+										</div>
+
+										<!-- Queixa Principal Interativa -->
+										<div class="queixa-item-sidebar interactive">
+											<div class="queixa-head-row">
+												<span class="queixa-label-sidebar">Queixa Principal (QP)</span>
+												{#if queixaPrincipal.trim()}
+													<button
+														type="button"
+														class="btn-analisar-queixa"
+														onclick={() =>
+															(queixaAbertaAvaliacao =
+																queixaAbertaAvaliacao === "QP" ? null : "QP")}
+													>
+														{queixaAbertaAvaliacao === "QP" ? "Fechar" : "Analisar"}
+													</button>
+												{/if}
+											</div>
+											{#if queixaPrincipal.trim()}
+												<p class="queixa-text-sidebar">{queixaPrincipal}</p>
+												{#if queixaAbertaAvaliacao === "QP" || analisesPorQueixa["QP"]?.trim()}
+													<textarea
+														class="form-textarea queixa-mini-textarea"
+														rows="2"
+														placeholder="Impressão diagnóstica sobre a QP..."
+														bind:value={analisesPorQueixa["QP"]}
+													></textarea>
+												{/if}
+											{:else}
+												<p class="queixa-text-sidebar queixa-empty">Não preenchida no Subjetivo</p>
+											{/if}
+										</div>
+
+										<div class="queixa-divider"></div>
+										<span class="queixa-label-sidebar">Outras Queixas / Problemas</span>
+										{#if queixasSecundarias.filter((q) => q.queixa.trim()).length > 0}
+											{#each queixasSecundarias.filter((q) => q.queixa.trim()) as qs, idx}
+												{@const qKey = `Q${idx + 2}: ${qs.queixa.trim()}`}
+												<div class="queixa-item-sidebar interactive queixa-sec-box">
+													<div class="queixa-head-row">
+														<span class="queixa-sec-title">• {qs.queixa}</span>
+														<button
+															type="button"
+															class="btn-analisar-queixa"
+															onclick={() =>
+																(queixaAbertaAvaliacao =
+																	queixaAbertaAvaliacao === qKey ? null : qKey)}
+														>
+															{queixaAbertaAvaliacao === qKey ? "Fechar" : "Analisar"}
+														</button>
+													</div>
+													{#if qs.historiaClinica?.trim()}
+														<p class="queixa-sub-hist">{qs.historiaClinica}</p>
+													{/if}
+													{#if queixaAbertaAvaliacao === qKey || analisesPorQueixa[qKey]?.trim()}
+														<textarea
+															class="form-textarea queixa-mini-textarea"
+															rows="2"
+															placeholder="Avaliação específica para esta queixa..."
+															bind:value={analisesPorQueixa[qKey]}
+														></textarea>
+													{/if}
+												</div>
+											{/each}
+										{:else}
+											<p class="queixa-text-sidebar queixa-empty">Nenhuma queixa secundária registrada</p>
+										{/if}
+									</aside>
+								</div>
+							</div>
+						{/if}
 					</section>
 
-					<!-- Avaliação — Texto + Queixas Sidebar -->
-					<section class="form-section">
-						<div class="section-header-row">
-							<div class="section-icon aval-accent">
-								<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+					<!-- ── SEÇÃO 02 · HIPÓTESES DIAGNÓSTICAS & CID-10 ── -->
+					<section
+						class="section-card"
+						id="sec-hipoteses-diagnosticas"
+						class:collapsed={collapsedSections.has("sec-hipoteses-diagnosticas")}
+					>
+						<div
+							class="section-header"
+							role="button"
+							tabindex="0"
+							onclick={() => toggleSection("sec-hipoteses-diagnosticas")}
+							onkeydown={(e) => {
+								if (e.key === "Enter" || e.key === " ") {
+									e.preventDefault();
+									toggleSection("sec-hipoteses-diagnosticas");
+								}
+							}}
+						>
+							<div class="section-title-wrap">
+								<span class="section-num aval">02</span>
+								<h2 class="section-title">Hipóteses Diagnósticas & CID-10</h2>
 							</div>
-							<div>
-								<h2 class="section-title">Avaliação Clínica</h2>
-								<p class="section-desc">Raciocínio clínico, hipóteses diagnósticas principais e diferenciais</p>
+							<div class="section-actions">
+								<span class="section-status-badge">
+									{hipotesesDiagnosticas.length > 0
+										? `${hipotesesDiagnosticas.length} hipótese(s)`
+										: "Não preenchido"}
+								</span>
+								<svg
+									class="chevron-icon"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2.2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
+									<polyline points="6 9 12 15 18 9"></polyline>
+								</svg>
 							</div>
 						</div>
 
-						<div class="avaliacao-layout">
-							<div class="avaliacao-editor">
-								<label for="id-avaliacao-texto" class="form-label">Avaliação / Raciocínio Clínico</label>
-								<textarea
-									id="id-avaliacao-texto"
-									class="form-textarea avaliacao-textarea"
-									rows="14"
-									placeholder="Descreva sua avaliação clínica: síntese do caso, hipóteses diagnósticas principais e diferenciais, estratificação de risco, correlação clínico-laboratorial..."
-									bind:value={avaliacaoTexto}
-								></textarea>
-							</div>
-
-							<aside class="queixas-sidebar">
-								<div class="queixas-sidebar-header">
-									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-									<span>Queixas do Paciente</span>
+						{#if !collapsedSections.has("sec-hipoteses-diagnosticas")}
+							<div class="section-body">
+								<!-- Atalhos de CIDs frequentes -->
+								<div class="cid-quick-bar">
+									<span class="cid-quick-label">Sugestões rápidas de CID-10 (clique para preencher):</span>
+									<div class="cid-chips-wrap">
+										{#each CIDS_FREQUENTES as item}
+											<button
+												type="button"
+												class="cid-chip-btn"
+												onclick={() => selecionarCidSugerido(item)}
+												title={item.desc}
+											>
+												<strong>{item.cid}</strong> · {item.desc.split(" (")[0]}
+											</button>
+										{/each}
+									</div>
 								</div>
 
-								<div class="queixa-item-sidebar">
-									<span class="queixa-label-sidebar">Queixa Principal</span>
-									{#if queixaPrincipal.trim()}
-										<p class="queixa-text-sidebar">{queixaPrincipal}</p>
-									{:else}
-										<p class="queixa-text-sidebar queixa-empty">Não preenchida</p>
-									{/if}
-								</div>
-
-								{#if queixasSecundarias.length > 0}
-									<div class="queixa-divider"></div>
-									<span class="queixa-label-sidebar">Queixas Secundárias</span>
-									{#each queixasSecundarias as qs}
-										{#if qs.queixa.trim()}
-											<div class="queixa-item-sidebar queixa-sec">
-												<span class="queixa-sec-bullet">•</span>
-												<p class="queixa-text-sidebar">{qs.queixa}</p>
+								<!-- Formulário para adicionar hipótese -->
+								<div class="hd-add-box">
+									<div class="hd-form-grid">
+										<div class="form-group">
+											<label for="hd-cid" class="form-label">Código CID-10 (opcional)</label>
+											<input
+												id="hd-cid"
+												type="text"
+												class="form-control"
+												placeholder="Ex: I10, E11, G43.9..."
+												bind:value={novaHipoteseCid}
+											/>
+										</div>
+										<div class="form-group">
+											<label for="hd-desc" class="form-label">Hipótese Diagnóstica / Problema *</label>
+											<input
+												id="hd-desc"
+												type="text"
+												class="form-control"
+												placeholder="Ex: Hipertensão Arterial Sistêmica mal controlada"
+												bind:value={novaHipoteseDesc}
+												onkeydown={(e) => {
+													if (e.key === "Enter") {
+														e.preventDefault();
+														adicionarHipoteseDiagnostica();
+													}
+												}}
+											/>
+										</div>
+										<div class="form-group">
+											<label for="hd-tipo" class="form-label">Classificação</label>
+											<select id="hd-tipo" class="form-select" bind:value={novaHipoteseTipo}>
+												<option value="Principal">Principal</option>
+												<option value="Secundário / Comorbidade">Secundário / Comorbidade</option>
+												<option value="Diferencial">Diagnóstico Diferencial</option>
+												<option value="Em Investigação">Em Investigação</option>
+											</select>
+										</div>
+										<div class="form-group">
+											<label for="hd-obs" class="form-label">Observação / Estágio</label>
+											<div class="hd-obs-btn-row">
+												<input
+													id="hd-obs"
+													type="text"
+													class="form-control"
+													placeholder="Ex: Estágio 2, controlada..."
+													bind:value={novaHipoteseObs}
+													onkeydown={(e) => {
+														if (e.key === "Enter") {
+															e.preventDefault();
+															adicionarHipoteseDiagnostica();
+														}
+													}}
+												/>
+												<button
+													type="button"
+													class="btn-add-hd"
+													onclick={adicionarHipoteseDiagnostica}
+												>
+													+ Adicionar
+												</button>
 											</div>
-										{/if}
-									{/each}
-									{#if queixasSecundarias.filter(q => q.queixa.trim()).length === 0}
-										<p class="queixa-text-sidebar queixa-empty">Nenhuma preenchida</p>
-									{/if}
-								{:else}
-									<div class="queixa-divider"></div>
-									<span class="queixa-label-sidebar">Queixas Secundárias</span>
-									<p class="queixa-text-sidebar queixa-empty">Nenhuma adicionada</p>
+										</div>
+									</div>
+								</div>
+
+								<!-- Lista de Hipóteses Adicionadas -->
+								{#if hipotesesDiagnosticas.length > 0}
+									<div class="hd-list">
+										{#each hipotesesDiagnosticas as hd, idx (hd.id)}
+											<div class="hd-card-item">
+												<div class="hd-card-left">
+													<span class="hd-index">{idx + 1}</span>
+													{#if hd.cid}
+														<span class="hd-cid-badge">{hd.cid}</span>
+													{/if}
+													<div class="hd-main-text">
+														<strong>{hd.descricao}</strong>
+														{#if hd.observacoes}
+															<span class="hd-obs-text">— {hd.observacoes}</span>
+														{/if}
+													</div>
+												</div>
+												<div class="hd-card-right">
+													<span
+														class="hd-tipo-pill"
+														class:principal={hd.tipo === "Principal"}
+														class:diferencial={hd.tipo === "Diferencial"}
+														class:investigacao={hd.tipo === "Em Investigação"}
+													>
+														{hd.tipo}
+													</span>
+													<button
+														type="button"
+														class="btn-remove-med"
+														onclick={() => removerHipoteseDiagnostica(hd.id)}
+														title="Remover hipótese"
+													>
+														✕
+													</button>
+												</div>
+											</div>
+										{/each}
+									</div>
 								{/if}
-							</aside>
+							</div>
+						{/if}
+					</section>
+
+					<!-- ── SEÇÃO 03 · ESCORES CLÍNICOS & ESTRATIFICAÇÃO DE RISCO ── -->
+					<section
+						class="section-card"
+						id="sec-escores-clinicos"
+						class:collapsed={collapsedSections.has("sec-escores-clinicos")}
+					>
+						<div
+							class="section-header"
+							role="button"
+							tabindex="0"
+							onclick={() => toggleSection("sec-escores-clinicos")}
+							onkeydown={(e) => {
+								if (e.key === "Enter" || e.key === " ") {
+									e.preventDefault();
+									toggleSection("sec-escores-clinicos");
+								}
+							}}
+						>
+							<div class="section-title-wrap">
+								<span class="section-num aval">03</span>
+								<h2 class="section-title">Escores Clínicos & Estratificação de Risco</h2>
+							</div>
+							<div class="section-actions">
+								<span class="section-status-badge">
+									{escoresRegistrados.trim() ? "Preenchido" : "Calculadoras e Indicadores"}
+								</span>
+								<svg
+									class="chevron-icon"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2.2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
+									<polyline points="6 9 12 15 18 9"></polyline>
+								</svg>
+							</div>
 						</div>
+
+						{#if !collapsedSections.has("sec-escores-clinicos")}
+							<div class="section-body">
+								<!-- Indicadores Calculados Automaticamente da Consulta -->
+								<div class="auto-indicators-strip">
+									<div class="auto-ind-item">
+										<span class="auto-ind-label">Idade</span>
+										<strong class="auto-ind-val">{idadeCalculada || "—"}</strong>
+									</div>
+									<div class="auto-ind-item">
+										<span class="auto-ind-label">Pressão Arterial</span>
+										<strong class="auto-ind-val">
+											{pas && pad ? `${pas}x${pad} mmHg` : "—"}
+										</strong>
+										{#if classificacaoPA}
+											<span class="auto-ind-sub">{classificacaoPA.label}</span>
+										{/if}
+									</div>
+									<div class="auto-ind-item">
+										<span class="auto-ind-label">IMC</span>
+										<strong class="auto-ind-val">
+											{imcCustomizado ? `${imcCustomizado} kg/m²` : "—"}
+										</strong>
+										{#if classificacaoIMC}
+											<span class="auto-ind-sub">{classificacaoIMC.label}</span>
+										{/if}
+									</div>
+									<div class="auto-ind-item">
+										<span class="auto-ind-label">Relação Cintura/Quadril</span>
+										<strong class="auto-ind-val">{rcqCalculada || "—"}</strong>
+										{#if riscoCircunferenciaAbdominal}
+											<span class="auto-ind-sub">{riscoCircunferenciaAbdominal.label}</span>
+										{/if}
+									</div>
+									<div class="auto-ind-item">
+										<span class="auto-ind-label">Carga Tabágica</span>
+										<strong class="auto-ind-val">
+											{cargaTabagica ? `${cargaTabagica} maços-ano` : "—"}
+										</strong>
+									</div>
+								</div>
+
+								<p class="section-desc" style="margin-bottom: 12px;">
+									Calculadoras clínicas de apoio à decisão médica — links diretos (MDCalc):
+								</p>
+
+								<div class="escores-grid">
+									{#each escoresClinicos as escore}
+										<a
+											href={escore.url}
+											target="_blank"
+											rel="noopener noreferrer"
+											class="escore-card"
+											style="--escore-color: {escore.cor}"
+										>
+											<div class="escore-card-icon">
+												<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+											</div>
+											<div class="escore-card-info">
+												<span class="escore-nome">{escore.nome}</span>
+												<span class="escore-desc">{escore.descricao}</span>
+											</div>
+											<svg class="escore-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>
+										</a>
+									{/each}
+								</div>
+
+								<div class="form-group" style="margin-top: 18px;">
+									<label for="id-escores-reg" class="form-label">
+										Registro de Escores Aplicados & Estratificação de Risco
+									</label>
+									<textarea
+										id="id-escores-reg"
+										class="form-textarea"
+										rows="3"
+										placeholder="Ex: Risco Cardiovascular Global (Framingham): 14% em 10 anos (Risco Intermediário) | TFG (CKD-EPI): 78 mL/min/1,73m² (G2) | CHA₂DS₂-VASc: 2 pts..."
+										bind:value={escoresRegistrados}
+									></textarea>
+								</div>
+							</div>
+						{/if}
 					</section>
 				</div>
 			{/if}
@@ -6963,106 +7826,527 @@
 						<div>
 							<h1 class="tab-title">Plano</h1>
 							<p class="tab-subtitle">
-								Conduta terapêutica, prescrição medicamentosa,
-								solicitações de exames, encaminhamentos e
-								seguimento.
+								Prescrição medicamentosa, solicitação de exames, condutas clínicas, encaminhamentos e plano de seguimento.
 							</p>
 						</div>
 					</div>
 
-					<!-- Prescrição Medicamentosa -->
-					<section class="form-section">
-						<div class="meds-box-wrapper plan-meds-wrapper">
-							<div class="meds-box-header">
-								<div class="meds-box-title-wrap">
-									<svg class="meds-icon-svg plan-med-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"></path><path d="m8.5 8.5 7 7"></path></svg>
-									<div>
-										<span class="meds-box-title">Prescrição Medicamentosa</span>
-										<span class="meds-box-subtitle">Medicamentos prescritos nesta consulta — organizados por classe</span>
-									</div>
-								</div>
-								<button
-									type="button"
-									class="btn-add-med btn-add-presc"
-									onclick={() => (modalPrescricaoOpen = true)}
-								>
-									<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-									<span>Prescrever Medicamento</span>
-								</button>
+					<!-- ── SEÇÃO 01 · PRESCRIÇÃO MEDICAMENTOSA ── -->
+					<section
+						class="section-card"
+						id="sec-prescricao"
+						class:collapsed={collapsedSections.has("sec-prescricao")}
+					>
+						<div
+							class="section-header"
+							role="button"
+							tabindex="0"
+							onclick={() => toggleSection("sec-prescricao")}
+							onkeydown={(e) => {
+								if (e.key === "Enter" || e.key === " ") {
+									e.preventDefault();
+									toggleSection("sec-prescricao");
+								}
+							}}
+						>
+							<div class="section-title-wrap">
+								<span class="section-num plan">01</span>
+								<h2 class="section-title">Prescrição Medicamentosa</h2>
 							</div>
+							<div class="section-actions">
+								<span class="section-status-badge">
+									{totalPrescricao > 0
+										? `${totalPrescricao} medicamento(s)`
+										: "Não preenchido"}
+								</span>
+								<svg
+									class="chevron-icon"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2.2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
+									<polyline points="6 9 12 15 18 9"></polyline>
+								</svg>
+							</div>
+						</div>
 
-							{#if totalPrescricao === 0}
-								<div class="meds-empty-state">
-									<div class="meds-empty-icon plan-empty-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"></path><path d="m8.5 8.5 7 7"></path></svg></div>
-									<h4>Nenhum medicamento prescrito ainda</h4>
-									<p>Clique no botão <strong>"+ Prescrever Medicamento"</strong> para buscar e adicionar à prescrição.</p>
-								</div>
-							{:else}
-								<div class="meds-groups-list">
-									{#each Object.entries(prescricaoPorClasse) as [classe, lista]}
-										<div class="med-class-group">
-											<div class="med-class-header">
-												<span class="med-class-tag presc-tag">{classe}</span>
-												<span class="med-class-count">{lista.length} {lista.length === 1 ? 'medicamento' : 'medicamentos'}</span>
-											</div>
-											<div class="med-items-grid">
-												{#each lista as m (m.id)}
-													<div class="med-card-item presc-card">
-														<div class="med-card-main">
-															<div class="med-card-name-row">
-																<span class="med-name">{m.principioAtivo}</span>
-																{#if m.concentracao}
-																	<span class="med-conc">{m.concentracao}</span>
-																{/if}
-															</div>
-															<div class="med-card-details">
-																<span class="med-forma">{m.formaFarmaceutica}</span>
-																<span class="med-pos-pill presc-pos" title="Posologia">{m.posologiaTexto}</span>
-															</div>
-															{#if m.observacoes}
-																<div class="med-card-obs"><em>{m.observacoes}</em></div>
-															{/if}
-														</div>
-														<button
-															type="button"
-															class="btn-remove-med"
-															onclick={() => removerPrescricao(m.id)}
-															title="Remover da prescrição"
-														>
-															<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-														</button>
-													</div>
-												{/each}
+						{#if !collapsedSections.has("sec-prescricao")}
+							<div class="section-body">
+								<div class="meds-box-wrapper plan-meds-wrapper" style="margin-top: 0;">
+									<div class="meds-box-header">
+										<div class="meds-box-title-wrap">
+											<svg class="meds-icon-svg plan-med-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"></path><path d="m8.5 8.5 7 7"></path></svg>
+											<div>
+												<span class="meds-box-title">Receituário / Medicamentos Prescritos</span>
+												<span class="meds-box-subtitle">Organizados por classe terapêutica — clique no lápis para editar qualquer item</span>
 											</div>
 										</div>
-									{/each}
+										<div class="presc-header-btns">
+											{#if medicamentosEmUso.length > 0}
+												<button
+													type="button"
+													class="btn-import-meds"
+													onclick={importarMedicamentosUsoParaPrescricao}
+													title="Importar medicamentos em uso contínuo do Subjetivo para manter na receita"
+												>
+													📥 Manter Meds em Uso ({medicamentosEmUso.length})
+												</button>
+											{/if}
+											<button
+												type="button"
+												class="btn-add-med btn-add-presc"
+												onclick={abrirNovaPrescricao}
+											>
+												<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+												<span>Prescrever Medicamento</span>
+											</button>
+										</div>
+									</div>
+
+									{#if totalPrescricao === 0}
+										<div class="meds-empty-state">
+											<div class="meds-empty-icon plan-empty-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"></path><path d="m8.5 8.5 7 7"></path></svg></div>
+											<h4>Nenhum medicamento prescrito ainda</h4>
+											<p>Clique em <strong>"+ Prescrever Medicamento"</strong> ou importe os medicamentos de uso contínuo do paciente.</p>
+										</div>
+									{:else}
+										<div class="meds-groups-list">
+											{#each Object.entries(prescricaoPorClasse) as [classe, lista]}
+												<div class="med-class-group">
+													<div class="med-class-header">
+														<span class="med-class-tag presc-tag">{classe}</span>
+														<span class="med-class-count">{lista.length} {lista.length === 1 ? 'medicamento' : 'medicamentos'}</span>
+													</div>
+													<div class="med-items-grid">
+														{#each lista as m (m.id)}
+															<div class="med-card-item presc-card">
+																<div class="med-card-main">
+																	<div class="med-card-name-row">
+																		<span class="med-name">{m.principioAtivo}</span>
+																		{#if m.concentracao}
+																			<span class="med-conc">{m.concentracao}</span>
+																		{/if}
+																	</div>
+																	<div class="med-card-details">
+																		<span class="med-forma">{m.formaFarmaceutica}</span>
+																		<span class="med-pos-pill presc-pos" title="Posologia">{m.posologiaTexto}</span>
+																	</div>
+																	{#if m.observacoes}
+																		<div class="med-card-obs"><em>{m.observacoes}</em></div>
+																	{/if}
+																</div>
+																<div class="med-card-actions">
+																	<button
+																		type="button"
+																		class="btn-edit-med"
+																		onclick={() => editarPrescricao(m)}
+																		title="Editar medicamento prescrito"
+																	>
+																		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+																			<path d="M12 20h9"></path>
+																			<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+																		</svg>
+																	</button>
+																	<button
+																		type="button"
+																		class="btn-remove-med"
+																		onclick={() => removerPrescricao(m.id)}
+																		title="Remover da prescrição"
+																	>
+																		<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+																	</button>
+																</div>
+															</div>
+														{/each}
+													</div>
+												</div>
+											{/each}
+										</div>
+									{/if}
 								</div>
-							{/if}
-						</div>
+							</div>
+						{/if}
 					</section>
 
-					<!-- Conduta -->
-					<section class="form-section">
-						<div class="section-header-row">
-							<div class="section-icon plan-accent">
-								<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+					<!-- ── SEÇÃO 02 · SOLICITAÇÃO DE EXAMES & PROCEDIMENTOS ── -->
+					<section
+						class="section-card"
+						id="sec-solicitacao-exames"
+						class:collapsed={collapsedSections.has("sec-solicitacao-exames")}
+					>
+						<div
+							class="section-header"
+							role="button"
+							tabindex="0"
+							onclick={() => toggleSection("sec-solicitacao-exames")}
+							onkeydown={(e) => {
+								if (e.key === "Enter" || e.key === " ") {
+									e.preventDefault();
+									toggleSection("sec-solicitacao-exames");
+								}
+							}}
+						>
+							<div class="section-title-wrap">
+								<span class="section-num plan">02</span>
+								<h2 class="section-title">Solicitação de Exames & Procedimentos</h2>
 							</div>
-							<div>
-								<h2 class="section-title">Conduta</h2>
-								<p class="section-desc">Orientações gerais, exames solicitados, encaminhamentos, retorno e demais condutas</p>
+							<div class="section-actions">
+								<span class="section-status-badge">
+									{examesSolicitados.length > 0
+										? `${examesSolicitados.length} exame(s)`
+										: "Não preenchido"}
+								</span>
+								<svg
+									class="chevron-icon"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2.2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
+									<polyline points="6 9 12 15 18 9"></polyline>
+								</svg>
 							</div>
 						</div>
 
-						<div class="form-group">
-							<label for="id-conduta" class="form-label">Plano de Conduta</label>
-							<textarea
-								id="id-conduta"
-								class="form-textarea conduta-textarea"
-								rows="10"
-								placeholder={"Ex: 1. Solicitar exames laboratoriais (hemograma, glicemia jejum, HbA1c, perfil lipídico, creatinina/TFG, TSH)\n2. Ajuste de medicação...\n3. Encaminhamento para especialista...\n4. Orientações sobre dieta e atividade física\n5. Retorno em 30 dias com exames"}
-								bind:value={condutaTexto}
-							></textarea>
+						{#if !collapsedSections.has("sec-solicitacao-exames")}
+							<div class="section-body">
+								<div class="cid-quick-bar">
+									<span class="cid-quick-label">Pacotes rápidos de solicitação (clique para adicionar os exames do perfil):</span>
+									<div class="cid-chips-wrap">
+										{#each Object.entries(PACOTES_EXAMES_SOLICITACAO) as [nomePkg, listaPkg]}
+											<button
+												type="button"
+												class="cid-chip-btn plan-chip"
+												onclick={() => adicionarPacoteSolicitacao(listaPkg)}
+											>
+												+ {nomePkg}
+											</button>
+										{/each}
+									</div>
+								</div>
+
+								<div class="hd-obs-btn-row" style="margin-bottom: 14px;">
+									<input
+										type="text"
+										class="form-control"
+										placeholder="Digite o nome de um exame laboratorial, imagem ou procedimento para solicitar..."
+										bind:value={novoExameSolicitado}
+										onkeydown={(e) => {
+											if (e.key === "Enter") {
+												e.preventDefault();
+												adicionarExameSolicitadoManual();
+											}
+										}}
+									/>
+									<button
+										type="button"
+										class="btn-add-hd plan-btn-add"
+										onclick={adicionarExameSolicitadoManual}
+									>
+										+ Solicitar Exame
+									</button>
+									{#if examesSolicitados.length > 0}
+										<button
+											type="button"
+											class="btn-clear-mini"
+											onclick={() => (examesSolicitados = [])}
+										>
+											Limpar lista
+										</button>
+									{/if}
+								</div>
+
+								{#if examesSolicitados.length > 0}
+									<div class="requested-exams-chips">
+										{#each examesSolicitados as ex}
+											<span class="req-exam-pill">
+												<span>{ex}</span>
+												<button
+													type="button"
+													onclick={() => removerExameSolicitado(ex)}
+													title="Remover exame"
+												>
+													✕
+												</button>
+											</span>
+										{/each}
+									</div>
+								{/if}
+
+								<div class="form-group" style="margin-top: 12px;">
+									<label for="id-just-exames" class="form-label">
+										Indicação Clínica / Justificativa para o Pedido de Exames
+									</label>
+									<input
+										id="id-just-exames"
+										type="text"
+										class="form-control"
+										placeholder="Ex: Controle metabólico de HAS e DM2 / Investigação de cefaleia..."
+										bind:value={justificativaExamesSolicitados}
+									/>
+								</div>
+							</div>
+						{/if}
+					</section>
+
+					<!-- ── SEÇÃO 03 · CONDUTA CLÍNICA & ORIENTAÇÕES AO PACIENTE ── -->
+					<section
+						class="section-card"
+						id="sec-conduta-orientacoes"
+						class:collapsed={collapsedSections.has("sec-conduta-orientacoes")}
+					>
+						<div
+							class="section-header"
+							role="button"
+							tabindex="0"
+							onclick={() => toggleSection("sec-conduta-orientacoes")}
+							onkeydown={(e) => {
+								if (e.key === "Enter" || e.key === " ") {
+									e.preventDefault();
+									toggleSection("sec-conduta-orientacoes");
+								}
+							}}
+						>
+							<div class="section-title-wrap">
+								<span class="section-num plan">03</span>
+								<h2 class="section-title">Conduta Clínica, MEV & Orientações</h2>
+							</div>
+							<div class="section-actions">
+								<span class="section-status-badge">
+									{condutaTexto.trim() || sinaisAlarmeOrientados.trim()
+										? "Preenchido"
+										: "Não preenchido"}
+								</span>
+								<svg
+									class="chevron-icon"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2.2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
+									<polyline points="6 9 12 15 18 9"></polyline>
+								</svg>
+							</div>
 						</div>
+
+						{#if !collapsedSections.has("sec-conduta-orientacoes")}
+							<div class="section-body">
+								<div class="cid-quick-bar">
+									<span class="cid-quick-label">Inserir orientações padronizadas no Plano de Conduta:</span>
+									<div class="cid-chips-wrap">
+										{#each TEMPLATES_CONDUTA_RAPIDA as tpl}
+											<button
+												type="button"
+												class="cid-chip-btn plan-chip"
+												onclick={() => inserirTemplateConduta(tpl.texto)}
+											>
+												+ {tpl.label}
+											</button>
+										{/each}
+									</div>
+								</div>
+
+								<div class="form-group">
+									<label for="id-conduta" class="form-label">
+										Plano Terapêutico & Orientações Não-Farmacológicas
+									</label>
+									<textarea
+										id="id-conduta"
+										class="form-textarea conduta-textarea"
+										rows="8"
+										placeholder={"Ex:\n1. Ajuste posológico de anti-hipertensivo\n2. Mudança do estilo de vida (dieta hipossódica, caminhada 30 min 5x/semana)\n3. Controle residencial da pressão arterial (MRPA)"}
+										bind:value={condutaTexto}
+									></textarea>
+								</div>
+
+								<div class="form-group" style="margin-top: 14px;">
+									<label for="id-sinais-alarme" class="form-label">
+										Sinais de Alarme Orientados (Red Flags)
+									</label>
+									<input
+										id="id-sinais-alarme"
+										type="text"
+										class="form-control"
+										placeholder="Ex: Procurar UPA/Pronto-Socorro se dor torácica, dispneia, déficit focal, síncope ou PA ≥ 180x120 mmHg sintomática..."
+										bind:value={sinaisAlarmeOrientados}
+									/>
+								</div>
+							</div>
+						{/if}
+					</section>
+
+					<!-- ── SEÇÃO 04 · ENCAMINHAMENTOS & PLANO DE SEGUIMENTO / RETORNO ── -->
+					<section
+						class="section-card"
+						id="sec-encaminhamentos-retorno"
+						class:collapsed={collapsedSections.has("sec-encaminhamentos-retorno")}
+					>
+						<div
+							class="section-header"
+							role="button"
+							tabindex="0"
+							onclick={() => toggleSection("sec-encaminhamentos-retorno")}
+							onkeydown={(e) => {
+								if (e.key === "Enter" || e.key === " ") {
+									e.preventDefault();
+									toggleSection("sec-encaminhamentos-retorno");
+								}
+							}}
+						>
+							<div class="section-title-wrap">
+								<span class="section-num plan">04</span>
+								<h2 class="section-title">Encaminhamentos & Plano de Seguimento / Retorno</h2>
+							</div>
+							<div class="section-actions">
+								<span class="section-status-badge">
+									{retornoPrazo.trim()
+										? retornoPrazo
+										: encaminhamentos.length > 0
+											? `${encaminhamentos.length} encaminhamento(s)`
+											: "Não preenchido"}
+								</span>
+								<svg
+									class="chevron-icon"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2.2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
+									<polyline points="6 9 12 15 18 9"></polyline>
+								</svg>
+							</div>
+						</div>
+
+						{#if !collapsedSections.has("sec-encaminhamentos-retorno")}
+							<div class="section-body">
+								<!-- Encaminhamentos -->
+								<div class="hd-add-box" style="margin-bottom: 18px;">
+									<span class="form-label" style="margin-bottom: 10px;">
+										Encaminhamento para Especialidade / Equipe Multiprofissional
+									</span>
+									<div class="hd-form-grid">
+										<div class="form-group">
+											<label for="enc-esp" class="form-label">Especialidade / Serviço</label>
+											<input
+												id="enc-esp"
+												type="text"
+												class="form-control"
+												placeholder="Ex: Cardiologia, Neurologia, Oftalmologia, Nutrição..."
+												bind:value={novaEspEncaminhamento}
+											/>
+										</div>
+										<div class="form-group">
+											<label for="enc-prio" class="form-label">Prioridade</label>
+											<select id="enc-prio" class="form-select" bind:value={novaPrioridadeEncaminhamento}>
+												<option value="Eletivo">Eletivo / Ambulatorial</option>
+												<option value="Prioritário">Prioritário</option>
+												<option value="Urgência">Urgência / Referência Imediata</option>
+											</select>
+										</div>
+										<div class="form-group span-2">
+											<label for="enc-motivo" class="form-label">Motivo Clínico / Resumo da Referência</label>
+											<div class="hd-obs-btn-row">
+												<input
+													id="enc-motivo"
+													type="text"
+													class="form-control"
+													placeholder="Ex: Avaliação de retinopatia hipertensiva/diabética..."
+													bind:value={novoMotivoEncaminhamento}
+													onkeydown={(e) => {
+														if (e.key === "Enter") {
+															e.preventDefault();
+															adicionarEncaminhamento();
+														}
+													}}
+												/>
+												<button
+													type="button"
+													class="btn-add-hd plan-btn-add"
+													onclick={adicionarEncaminhamento}
+												>
+													+ Encaminhar
+												</button>
+											</div>
+										</div>
+									</div>
+
+									{#if encaminhamentos.length > 0}
+										<div class="hd-list" style="margin-top: 12px;">
+											{#each encaminhamentos as enc (enc.id)}
+												<div class="hd-card-item">
+													<div class="hd-card-left">
+														<span class="hd-cid-badge">{enc.prioridade}</span>
+														<div class="hd-main-text">
+															<strong>{enc.especialidade}</strong>
+															{#if enc.motivo}
+																<span class="hd-obs-text">— {enc.motivo}</span>
+															{/if}
+														</div>
+													</div>
+													<button
+														type="button"
+														class="btn-remove-med"
+														onclick={() => removerEncaminhamento(enc.id)}
+														title="Remover encaminhamento"
+													>
+														✕
+													</button>
+												</div>
+											{/each}
+										</div>
+									{/if}
+								</div>
+
+								<!-- Seguimento e Retorno -->
+								<div class="cid-quick-bar">
+									<span class="cid-quick-label">Prazo sugerido para Retorno / Reavaliação:</span>
+									<div class="cid-chips-wrap">
+										{#each PRAZOS_RETORNO as pz}
+											<button
+												type="button"
+												class="cid-chip-btn plan-chip"
+												class:selected={retornoPrazo === pz}
+												onclick={() => (retornoPrazo = pz)}
+											>
+												{pz}
+											</button>
+										{/each}
+									</div>
+								</div>
+
+								<div class="form-grid">
+									<div class="form-group">
+										<label for="id-retorno-prazo" class="form-label">Prazo de Retorno Definido</label>
+										<input
+											id="id-retorno-prazo"
+											type="text"
+											class="form-control"
+											placeholder="Ex: Retorno em 30 dias com resultados de exames"
+											bind:value={retornoPrazo}
+										/>
+									</div>
+									<div class="form-group">
+										<label for="id-retorno-obs" class="form-label">Condições para o Retorno / Metas</label>
+										<input
+											id="id-retorno-obs"
+											type="text"
+											class="form-control"
+											placeholder="Ex: Trazer mapa residencial de PA e exames laboratoriais solicitados"
+											bind:value={retornoObservacoes}
+										/>
+									</div>
+								</div>
+							</div>
+						{/if}
 					</section>
 				</div>
 			{/if}
@@ -7081,11 +8365,17 @@
 <!-- Modais da Anamnese -->
 <MedicamentoUsoModal
 	bind:open={modalMedUsoOpen}
+	medicamentoParaEditar={medEmUsoParaEditar}
+	tituloModal={medEmUsoParaEditar ? "Editar Medicamento em Uso" : "Adicionar Medicamento em Uso"}
 	onsave={adicionarMedicamento}
+	onclose={() => (medEmUsoParaEditar = null)}
 />
 <MedicamentoUsoModal
 	bind:open={modalPrescricaoOpen}
+	medicamentoParaEditar={prescricaoParaEditar}
+	tituloModal={prescricaoParaEditar ? "Editar Medicamento da Prescrição" : "Prescrever Medicamento"}
 	onsave={adicionarPrescricao}
+	onclose={() => (prescricaoParaEditar = null)}
 />
 <FagerstromModal bind:open={modalFagerstromOpen} onsave={salvarFagerstrom} />
 <ExameModal
@@ -7569,6 +8859,506 @@
 
 	.section-num.obj {
 		background: var(--tab-obj);
+	}
+
+	.section-num.aval {
+		background: var(--tab-aval);
+	}
+
+	.section-num.plan {
+		background: var(--tab-plan);
+	}
+
+	/* ── TOPBAR PATIENT PILL (Primeiro nome + Idade a todo tempo) ── */
+	.topbar-patient-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 5px 11px;
+		border-radius: 999px;
+		border: 1px dashed #cbd5e1;
+		background: #f8fafc;
+		color: #64748b;
+		font-size: 12.5px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		max-width: 240px;
+		white-space: nowrap;
+	}
+
+	.topbar-patient-pill.filled {
+		border-style: solid;
+		border-color: #bfdbfe;
+		background: #eff6ff;
+		color: #1e40af;
+	}
+
+	.topbar-patient-pill:hover {
+		background: #dbeafe;
+		border-color: #93c5fd;
+		color: #1d4ed8;
+	}
+
+	.patient-pill-name {
+		font-weight: 700;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.patient-pill-sep {
+		opacity: 0.5;
+	}
+
+	.patient-pill-age {
+		font-family: "IBM Plex Mono", monospace;
+		font-size: 11.5px;
+		font-weight: 600;
+	}
+
+	/* ── DATA DE NASCIMENTO & IDADE AUTOMÁTICA ── */
+	.dob-age-row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.dob-input {
+		flex: 1;
+	}
+
+	.age-computed-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 8px 12px;
+		border-radius: var(--radius-sm);
+		background: #f1f5f9;
+		border: 1px solid var(--border-color);
+		color: var(--text-muted);
+		font-size: 12.5px;
+		white-space: nowrap;
+		min-height: 38px;
+		box-sizing: border-box;
+	}
+
+	.age-computed-badge.active {
+		background: #eff6ff;
+		border-color: #bfdbfe;
+		color: #1e40af;
+	}
+
+	.age-badge-label {
+		font-size: 11.5px;
+		font-weight: 600;
+		opacity: 0.8;
+	}
+
+	.age-badge-val {
+		font-family: "IBM Plex Mono", monospace;
+		font-weight: 700;
+		font-size: 13px;
+	}
+
+	/* ── MEDICAMENTOS: EDIT & ACTIONS ── */
+	.med-card-actions {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex-shrink: 0;
+	}
+
+	.btn-edit-med {
+		width: 30px;
+		height: 30px;
+		border-radius: 6px;
+		border: 1px solid #e2e8f0;
+		background: #f8fafc;
+		color: #475569;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.btn-edit-med:hover {
+		background: #eff6ff;
+		border-color: #93c5fd;
+		color: #2563eb;
+	}
+
+	.presc-header-btns {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+
+	.btn-import-meds {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 7px 12px;
+		border-radius: 8px;
+		border: 1px solid #ddd6fe;
+		background: #f5f3ff;
+		color: #6d28d9;
+		font-size: 12.5px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.btn-import-meds:hover {
+		background: #ede9fe;
+		border-color: #c4b5fd;
+	}
+
+	/* ── AVALIAÇÃO & PLANO NOVOS COMPONENTES ── */
+	.avaliacao-top-toolbar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		margin-bottom: 14px;
+		padding: 10px 14px;
+		background: #fffbeb;
+		border: 1px solid #fde68a;
+		border-radius: 8px;
+		flex-wrap: wrap;
+	}
+
+	.toolbar-hint {
+		font-size: 12.5px;
+		color: #92400e;
+		font-weight: 500;
+	}
+
+	.aval-btn-fill {
+		background: #ffffff;
+		border: 1px solid #f59e0b;
+		color: #b45309;
+		padding: 6px 12px;
+		border-radius: 6px;
+		font-size: 12px;
+		font-weight: 700;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.aval-btn-fill:hover {
+		background: #fef3c7;
+	}
+
+	.queixa-head-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		margin-bottom: 4px;
+	}
+
+	.btn-analisar-queixa {
+		font-size: 11px;
+		font-weight: 700;
+		padding: 2px 8px;
+		border-radius: 999px;
+		border: 1px solid #fcd34d;
+		background: #fffbeb;
+		color: #b45309;
+		cursor: pointer;
+	}
+
+	.btn-analisar-queixa:hover {
+		background: #fef3c7;
+	}
+
+	.queixa-mini-textarea {
+		margin-top: 6px;
+		font-size: 12px !important;
+		padding: 7px 9px !important;
+	}
+
+	.queixa-sec-box {
+		margin-top: 8px;
+		padding: 8px 10px;
+		background: #ffffff;
+		border: 1px solid #e2e8f0;
+		border-radius: 8px;
+	}
+
+	.queixa-sec-title {
+		font-size: 12.5px;
+		font-weight: 700;
+		color: #1e293b;
+	}
+
+	.queixa-sub-hist {
+		margin: 2px 0 4px;
+		font-size: 11.5px;
+		color: #64748b;
+	}
+
+	.cid-quick-bar {
+		background: #f8fafc;
+		border: 1px solid #e2e8f0;
+		border-radius: 10px;
+		padding: 12px 14px;
+		margin-bottom: 16px;
+	}
+
+	.cid-quick-label {
+		display: block;
+		font-size: 11.5px;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: #64748b;
+		margin-bottom: 8px;
+	}
+
+	.cid-chips-wrap {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.cid-chip-btn {
+		padding: 5px 10px;
+		border-radius: 999px;
+		border: 1px solid #cbd5e1;
+		background: #ffffff;
+		color: #334155;
+		font-size: 12px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.cid-chip-btn:hover {
+		border-color: #f59e0b;
+		background: #fffbeb;
+		color: #92400e;
+	}
+
+	.cid-chip-btn.plan-chip:hover,
+	.cid-chip-btn.plan-chip.selected {
+		border-color: #8b5cf6;
+		background: #f5f3ff;
+		color: #5b21b6;
+	}
+
+	.hd-add-box {
+		background: #f8fafc;
+		border: 1px solid #e2e8f0;
+		border-radius: 10px;
+		padding: 14px 16px;
+	}
+
+	.hd-form-grid {
+		display: grid;
+		grid-template-columns: 140px 1fr 190px 1fr;
+		gap: 12px;
+		align-items: end;
+	}
+
+	@media (max-width: 900px) {
+		.hd-form-grid {
+			grid-template-columns: 1fr 1fr;
+		}
+	}
+
+	.hd-obs-btn-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.btn-add-hd {
+		padding: 8px 14px;
+		border-radius: 8px;
+		border: none;
+		background: #d97706;
+		color: #ffffff;
+		font-size: 12.5px;
+		font-weight: 700;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+
+	.btn-add-hd.plan-btn-add {
+		background: #7c3aed;
+	}
+
+	.btn-clear-mini {
+		padding: 8px 10px;
+		border-radius: 8px;
+		border: 1px solid #fecaca;
+		background: #fef2f2;
+		color: #dc2626;
+		font-size: 12px;
+		font-weight: 600;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+
+	.hd-list {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		margin-top: 14px;
+	}
+
+	.hd-card-item {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 10px 14px;
+		background: #ffffff;
+		border: 1px solid #e2e8f0;
+		border-radius: 8px;
+	}
+
+	.hd-card-left {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+
+	.hd-index {
+		width: 22px;
+		height: 22px;
+		border-radius: 50%;
+		background: #f1f5f9;
+		color: #475569;
+		font-size: 11px;
+		font-weight: 700;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.hd-cid-badge {
+		font-family: "IBM Plex Mono", monospace;
+		font-size: 11.5px;
+		font-weight: 700;
+		background: #fef3c7;
+		color: #92400e;
+		padding: 2px 8px;
+		border-radius: 4px;
+	}
+
+	.hd-main-text {
+		font-size: 13.5px;
+		color: #0f172a;
+	}
+
+	.hd-obs-text {
+		color: #64748b;
+		font-size: 12.5px;
+		margin-left: 4px;
+	}
+
+	.hd-card-right {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.hd-tipo-pill {
+		font-size: 11px;
+		font-weight: 700;
+		padding: 3px 9px;
+		border-radius: 999px;
+		background: #f1f5f9;
+		color: #475569;
+	}
+
+	.hd-tipo-pill.principal {
+		background: #dcfce7;
+		color: #166534;
+	}
+
+	.hd-tipo-pill.diferencial {
+		background: #e0f2fe;
+		color: #075985;
+	}
+
+	.hd-tipo-pill.investigacao {
+		background: #fef3c7;
+		color: #92400e;
+	}
+
+	.auto-indicators-strip {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+		gap: 10px;
+		margin-bottom: 18px;
+	}
+
+	.auto-ind-item {
+		background: #f8fafc;
+		border: 1px solid #e2e8f0;
+		border-radius: 8px;
+		padding: 10px 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.auto-ind-label {
+		font-size: 11px;
+		font-weight: 600;
+		color: #64748b;
+		text-transform: uppercase;
+	}
+
+	.auto-ind-val {
+		font-family: "IBM Plex Mono", monospace;
+		font-size: 13.5px;
+		font-weight: 700;
+		color: #0f172a;
+	}
+
+	.auto-ind-sub {
+		font-size: 11px;
+		color: #0284c7;
+		font-weight: 600;
+	}
+
+	.requested-exams-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		padding: 12px;
+		background: #faf5ff;
+		border: 1px solid #e9d5ff;
+		border-radius: 8px;
+	}
+
+	.req-exam-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 4px 10px;
+		border-radius: 999px;
+		background: #ffffff;
+		border: 1px solid #d8b4fe;
+		color: #5b21b6;
+		font-size: 12.5px;
+		font-weight: 600;
+	}
+
+	.req-exam-pill button {
+		background: transparent;
+		border: none;
+		color: #9333ea;
+		cursor: pointer;
+		font-size: 12px;
+		padding: 0 2px;
 	}
 
 	.section-title {

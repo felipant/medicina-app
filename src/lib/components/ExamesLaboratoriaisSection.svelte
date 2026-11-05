@@ -16,7 +16,6 @@
 	import { tick } from 'svelte';
 	import {
 		EXAMES_CATALOGO,
-		buscarExamesCatalogo,
 		extrairReferenciaPorSexo,
 		type ExameCatalogoItem
 	} from '$lib/data/examesCatalogo';
@@ -38,7 +37,7 @@
 		}
 	});
 
-	// Active Draft Row State (for continuous rapid typing)
+	// Active Draft Row State (for single exam insertion)
 	let isAddingRow = $state(false);
 	let termoBusca = $state('');
 	let exameSelecionado = $state<ExameCatalogoItem | null>(null);
@@ -53,10 +52,142 @@
 	let inputNomeRef: HTMLInputElement | null = null;
 	let inputValorRef: HTMLInputElement | null = null;
 
+	// Package Modal State ("Adicionar Pacote")
+	let isPackageModalOpen = $state(false);
+	let pacoteModalSelecionado = $state('');
+	let dataColetaModal = $state('');
+	let itensPacoteModal = $state<ExameLaboratorialLancado[]>([]);
+
+	let catalogoDinamico = $state<ExameCatalogoItem[]>(EXAMES_CATALOGO);
+
+	$effect(() => {
+		if (typeof window !== 'undefined') {
+			fetch('/api/exames-laboratoriais')
+				.then((r) => (r.ok ? r.json() : null))
+				.then((data: any) => {
+					if (data?.exames && Array.isArray(data.exames) && data.exames.length > 0) {
+						catalogoDinamico = data.exames.map((item: any) => ({
+							material: item.material || 'SANGUE',
+							nome: item.nome || '',
+							pacote: item.pacote || '',
+							unidade: item.unidade || '',
+							valoresReferencia: item.valoresReferencia || ''
+						}));
+					}
+				})
+				.catch(() => {});
+		}
+	});
+
+	// Distinct packages from catalog
+	let pacotesDisponiveis = $derived.by(() => {
+		const vistos = new Set<string>();
+		const lista: string[] = [];
+		for (const item of catalogoDinamico) {
+			const pkg = (item.pacote || '').trim();
+			if (pkg && !vistos.has(pkg)) {
+				vistos.add(pkg);
+				lista.push(pkg);
+			}
+		}
+		return lista;
+	});
+
+	function abrirModalPacote() {
+		pacoteModalSelecionado = '';
+		dataColetaModal = dataColetaPadrao || new Date().toISOString().split('T')[0];
+		itensPacoteModal = [];
+		isPackageModalOpen = true;
+	}
+
+	function fecharModalPacote() {
+		isPackageModalOpen = false;
+	}
+
+	function carregarExamesDoPacote(nomePacote: string) {
+		pacoteModalSelecionado = nomePacote;
+		if (!nomePacote) {
+			itensPacoteModal = [];
+			return;
+		}
+		const filtrados = catalogoDinamico.filter((item) => item.pacote === nomePacote);
+		itensPacoteModal = filtrados.map((item, idx) => ({
+			id: `pkg-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+			nome: item.nome,
+			pacote: item.pacote,
+			unidade: item.unidade || '—',
+			valoresReferencia: extrairReferenciaPorSexo(item.valoresReferencia, sexoBiologico),
+			valor: '',
+			dataColeta: dataColetaModal
+		}));
+	}
+
+	function adicionarLinhaExtraModal() {
+		itensPacoteModal = [
+			...itensPacoteModal,
+			{
+				id: `pkg-extra-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+				nome: '',
+				pacote: pacoteModalSelecionado || 'Outros Exames',
+				unidade: '',
+				valoresReferencia: '',
+				valor: '',
+				dataColeta: dataColetaModal
+			}
+		];
+	}
+
+	function removerLinhaModal(id: string) {
+		itensPacoteModal = itensPacoteModal.filter((item) => item.id !== id);
+	}
+
+	function salvarPacoteModal() {
+		const dataFinal = dataColetaModal || dataColetaPadrao || new Date().toISOString().split('T')[0];
+		const validos = itensPacoteModal
+			.filter((item) => item.nome.trim() !== '')
+			.map((item) => ({
+				id: 'lab-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+				nome: item.nome.trim(),
+				pacote: item.pacote.trim() || pacoteModalSelecionado || 'Outros Exames',
+				unidade: item.unidade.trim() || '—',
+				valoresReferencia: item.valoresReferencia.trim() || '—',
+				valor: item.valor.trim(),
+				dataColeta: dataFinal
+			}));
+
+		if (validos.length > 0) {
+			exames = [...exames, ...validos];
+			dataColetaPadrao = dataFinal;
+		}
+		fecharModalPacote();
+	}
+
 	// Computed suggestions
 	let sugestoes = $derived.by(() => {
-		if (!termoBusca.trim()) return [];
-		return buscarExamesCatalogo(termoBusca).slice(0, 8);
+		const q = termoBusca.trim();
+		if (!q) return [];
+		const norm = q
+			.normalize('NFD')
+			.replace(/[\u0300-\u036f]/g, '')
+			.toLowerCase();
+		const startsWith: ExameCatalogoItem[] = [];
+		const contains: ExameCatalogoItem[] = [];
+		for (const item of catalogoDinamico) {
+			const nomeNorm = item.nome
+				.normalize('NFD')
+				.replace(/[\u0300-\u036f]/g, '')
+				.toLowerCase();
+			const pacNorm = item.pacote
+				.normalize('NFD')
+				.replace(/[\u0300-\u036f]/g, '')
+				.toLowerCase();
+			if (nomeNorm.startsWith(norm)) {
+				startsWith.push(item);
+			} else if (nomeNorm.includes(norm) || pacNorm.includes(norm)) {
+				contains.push(item);
+			}
+		}
+		return [...startsWith, ...contains].slice(0, 8);
 	});
 
 	// Nested grouping: Data → Pacote → Exames
@@ -283,6 +414,19 @@
 
 			<button
 				type="button"
+				class="btn-add-pkg"
+				onclick={abrirModalPacote}
+			>
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+					<polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+					<line x1="12" y1="22.08" x2="12" y2="12"></line>
+				</svg>
+				<span>Adicionar Pacote</span>
+			</button>
+
+			<button
+				type="button"
 				class="btn-add-lab"
 				onclick={iniciarNovaLinha}
 			>
@@ -295,7 +439,7 @@
 		</div>
 	</div>
 
-	<!-- Interactive Input Bar: 2 Linhas estruturadas conforme solicitado -->
+	<!-- Interactive Input Bar: 2 Linhas estruturadas -->
 	{#if isAddingRow}
 		<div class="lab-draft-card fade-in">
 			<!-- Header do Box de Inserção -->
@@ -460,7 +604,7 @@
 			<div class="lab-empty-icon">🧪</div>
 			<h4>Nenhum exame laboratorial lançado</h4>
 			<p>
-				Clique no botão <strong>"+ Adicionar Exame"</strong> para iniciar o lançamento rápido.
+				Clique em <strong>"Adicionar Pacote"</strong> para lançar um pacote completo em tabela ou em <strong>"Adicionar Exame"</strong> para lançamento individual.
 			</p>
 		</div>
 	{:else}
@@ -493,10 +637,11 @@
 									<table class="package-table">
 										<thead>
 											<tr>
-												<th class="th-nome">Exame</th>
-												<th class="th-valor">Resultado</th>
+												<th class="th-nome">Nome</th>
+												<th class="th-pkg">Pacote</th>
 												<th class="th-unidade">Unidade</th>
-												<th class="th-ref">Valor de Referência</th>
+												<th class="th-ref">Valores de Referência</th>
+												<th class="th-valor">Resultado</th>
 												<th class="th-acoes"></th>
 											</tr>
 										</thead>
@@ -504,14 +649,21 @@
 											{#each gPkg.itens as ex (ex.id)}
 												<tr class="lab-row">
 													<td class="td-nome">
-														<span class="exam-name-text">{ex.nome}</span>
-													</td>
-													<td class="td-valor">
 														<input
 															type="text"
-															class="inline-val-input"
-															bind:value={ex.valor}
-															placeholder="—"
+															class="inline-name-input"
+															bind:value={ex.nome}
+															title="Clique para editar o nome do exame"
+															placeholder="Nome do exame"
+														/>
+													</td>
+													<td class="td-pkg">
+														<input
+															type="text"
+															class="inline-pkg-input"
+															bind:value={ex.pacote}
+															title="Clique para editar o pacote"
+															placeholder="Pacote"
 														/>
 													</td>
 													<td class="td-unidade">
@@ -529,6 +681,14 @@
 															class="inline-ref-input"
 															bind:value={ex.valoresReferencia}
 															title="Clique para editar o valor de referência"
+															placeholder="—"
+														/>
+													</td>
+													<td class="td-valor">
+														<input
+															type="text"
+															class="inline-val-input"
+															bind:value={ex.valor}
 															placeholder="—"
 														/>
 													</td>
@@ -555,6 +715,197 @@
 		</div>
 	{/if}
 </div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     POP-UP (MODAL): ADICIONAR PACOTE DE EXAMES LABORATORIAIS
+     ═══════════════════════════════════════════════════════════════════ -->
+{#if isPackageModalOpen}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="pkg-modal-backdrop" onclick={fecharModalPacote}>
+		<div
+			class="pkg-modal-dialog"
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<div class="pkg-modal-header">
+				<div class="pkg-modal-title-wrap">
+					<span class="pkg-modal-icon">📦</span>
+					<div>
+						<h3 class="pkg-modal-title">Adicionar Pacote de Exames</h3>
+						<p class="pkg-modal-subtitle">
+							Selecione o pacote e a data da coleta para editar e lançar os resultados em tabela.
+						</p>
+					</div>
+				</div>
+				<button
+					type="button"
+					class="pkg-modal-close"
+					onclick={fecharModalPacote}
+					aria-label="Fechar modal"
+				>
+					✕
+				</button>
+			</div>
+
+			<div class="pkg-modal-body">
+				<!-- Passo 1: Seleção do Pacote e Data -->
+				<div class="pkg-selection-bar">
+					<div class="pkg-select-field">
+						<label for="pkg-modal-select" class="pkg-field-label">
+							Pacote de Exames
+						</label>
+						<select
+							id="pkg-modal-select"
+							class="pkg-select-input"
+							value={pacoteModalSelecionado}
+							onchange={(e) => carregarExamesDoPacote(e.currentTarget.value)}
+						>
+							<option value="">Selecione um pacote...</option>
+							{#each pacotesDisponiveis as pkg}
+								<option value={pkg}>{pkg}</option>
+							{/each}
+						</select>
+					</div>
+
+					<div class="pkg-date-field">
+						<label for="pkg-modal-date" class="pkg-field-label">
+							Data da Coleta
+						</label>
+						<input
+							id="pkg-modal-date"
+							type="date"
+							class="pkg-date-input"
+							bind:value={dataColetaModal}
+						/>
+					</div>
+				</div>
+
+				<!-- Atalhos rápidos de pacotes -->
+				<div class="pkg-quick-chips">
+					{#each pacotesDisponiveis as pkg}
+						<button
+							type="button"
+							class="pkg-chip-btn"
+							class:active={pacoteModalSelecionado === pkg}
+							onclick={() => carregarExamesDoPacote(pkg)}
+						>
+							{pkg}
+						</button>
+					{/each}
+				</div>
+
+				<!-- Passo 2: Tabela Editável com todos os exames do pacote -->
+				{#if !pacoteModalSelecionado}
+					<div class="pkg-empty-prompt">
+						<p>Selecione um pacote acima para carregar os exames na tabela.</p>
+					</div>
+				{:else}
+					<div class="pkg-table-container">
+						<table class="pkg-modal-table">
+							<thead>
+								<tr>
+									<th class="col-nome">Nome</th>
+									<th class="col-pacote">Pacote</th>
+									<th class="col-unidade">Unidade</th>
+									<th class="col-ref">Valores de Referência</th>
+									<th class="col-resultado">Resultado</th>
+									<th class="col-del"></th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each itensPacoteModal as item (item.id)}
+									<tr>
+										<td>
+											<input
+												type="text"
+												class="pkg-cell-input font-semibold"
+												bind:value={item.nome}
+												placeholder="Nome do exame"
+											/>
+										</td>
+										<td>
+											<input
+												type="text"
+												class="pkg-cell-input"
+												bind:value={item.pacote}
+												placeholder="Pacote"
+											/>
+										</td>
+										<td>
+											<input
+												type="text"
+												class="pkg-cell-input mono-cell"
+												bind:value={item.unidade}
+												placeholder="Unidade"
+											/>
+										</td>
+										<td>
+											<input
+												type="text"
+												class="pkg-cell-input mono-cell"
+												bind:value={item.valoresReferencia}
+												placeholder="Referência"
+											/>
+										</td>
+										<td>
+											<input
+												type="text"
+												class="pkg-cell-input result-cell"
+												bind:value={item.valor}
+												placeholder="Resultado..."
+											/>
+										</td>
+										<td class="cell-del">
+											<button
+												type="button"
+												class="btn-del-pkg-row"
+												onclick={() => removerLinhaModal(item.id)}
+												title="Remover exame do pacote"
+											>
+												✕
+											</button>
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+
+					<div class="pkg-table-actions">
+						<button
+							type="button"
+							class="btn-add-extra-row"
+							onclick={adicionarLinhaExtraModal}
+						>
+							+ Adicionar linha ao pacote
+						</button>
+					</div>
+				{/if}
+			</div>
+
+			<div class="pkg-modal-footer">
+				<button
+					type="button"
+					class="btn-pkg-cancel"
+					onclick={fecharModalPacote}
+				>
+					Cancelar
+				</button>
+				<button
+					type="button"
+					class="btn-pkg-confirm"
+					disabled={!pacoteModalSelecionado || itensPacoteModal.length === 0}
+					onclick={salvarPacoteModal}
+				>
+					Salvar Pacote ({itensPacoteModal.length} {itensPacoteModal.length === 1 ? 'exame' : 'exames'})
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.lab-section-wrapper {
@@ -619,6 +970,7 @@
 		display: flex;
 		align-items: center;
 		gap: 10px;
+		flex-wrap: wrap;
 	}
 
 	.coleta-date-wrap {
@@ -644,6 +996,27 @@
 		color: #0f172a;
 	}
 
+	.btn-add-pkg {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 12px;
+		border-radius: 6px;
+		border: 1px solid #15803d;
+		background: #15803d;
+		color: #ffffff;
+		font-family: 'Inter', sans-serif;
+		font-size: 12px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.btn-add-pkg:hover {
+		background: #166534;
+		border-color: #166534;
+	}
+
 	.btn-add-lab {
 		display: inline-flex;
 		align-items: center;
@@ -666,7 +1039,7 @@
 		border-color: #059669;
 	}
 
-	/* ── Box de Inserção Estruturado (Linha 1: Nome+Pacote+Unidade / Linha 2: Data+Ref+Resultado+Botão) ── */
+	/* ── Box de Inserção Estruturado ── */
 	.lab-draft-card {
 		background: #ffffff;
 		border: 2px solid #059669;
@@ -745,7 +1118,6 @@
 		color: #dc2626;
 	}
 
-	/* LINHA 1: Nome do Exame (50%) + Pacote (25%) + Unidade (25%) */
 	.draft-line.line-1 {
 		display: grid;
 		grid-template-columns: 2fr 1fr 1fr;
@@ -753,7 +1125,6 @@
 		align-items: end;
 	}
 
-	/* LINHA 2: Data (120px) + Referência (1.8fr) + Resultado (1fr) + Botão Salvar */
 	.draft-line.line-2 {
 		display: grid;
 		grid-template-columns: 125px 2fr 1.2fr auto;
@@ -1005,7 +1376,6 @@
 		background: #fafbfc;
 	}
 
-	/* Sub-bloco por Pacote (Comprimido) */
 	.package-card {
 		background: #ffffff;
 		border: 1px solid #e2e8f0;
@@ -1070,7 +1440,7 @@
 	}
 
 	.package-table td {
-		padding: 4px 10px;
+		padding: 4px 8px;
 		border-bottom: 1px solid #f8fafc;
 		vertical-align: middle;
 	}
@@ -1083,15 +1453,48 @@
 		background: #fafbfc;
 	}
 
-	.th-nome { width: 30%; }
-	.th-valor { width: 18%; }
-	.th-unidade { width: 16%; }
-	.th-ref { width: 32%; }
+	.th-nome { width: 26%; }
+	.th-pkg { width: 16%; }
+	.th-unidade { width: 12%; }
+	.th-ref { width: 26%; }
+	.th-valor { width: 16%; }
 	.th-acoes { width: 4%; text-align: right; }
 
-	.exam-name-text {
-		font-weight: 600;
+	.inline-name-input,
+	.inline-pkg-input {
+		height: 24px;
+		width: 100%;
+		padding: 1px 6px;
+		border: 1px solid transparent;
+		border-radius: 4px;
+		font-family: 'Inter', sans-serif;
+		font-size: 12px;
 		color: #0f172a;
+		background: transparent;
+		box-sizing: border-box;
+		transition: all 0.12s ease;
+	}
+
+	.inline-name-input {
+		font-weight: 600;
+	}
+
+	.inline-pkg-input {
+		font-size: 11px;
+		color: #475569;
+	}
+
+	.inline-name-input:hover,
+	.inline-pkg-input:hover {
+		border-color: #e2e8f0;
+		background: #f8fafc;
+	}
+
+	.inline-name-input:focus,
+	.inline-pkg-input:focus {
+		outline: none;
+		border-color: #059669;
+		background: #ffffff;
 	}
 
 	.inline-val-input {
@@ -1210,9 +1613,358 @@
 	.lab-empty-state p {
 		font-size: 12px;
 		color: var(--text-muted);
-		max-width: 440px;
+		max-width: 480px;
 		margin: 0;
 		line-height: 1.4;
+	}
+
+	/* ═════════════════════════════════════════════════════════
+	   ESTILOS DO POP-UP (MODAL) ADICIONAR PACOTE
+	   ═════════════════════════════════════════════════════════ */
+	.pkg-modal-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 1200;
+		background: rgba(15, 23, 42, 0.55);
+		backdrop-filter: blur(3px);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 20px;
+	}
+
+	.pkg-modal-dialog {
+		background: #ffffff;
+		border: 1px solid #e2e8f0;
+		border-radius: 14px;
+		width: 100%;
+		max-width: 960px;
+		max-height: 88vh;
+		display: flex;
+		flex-direction: column;
+		box-shadow: 0 24px 48px -12px rgba(15, 23, 42, 0.25);
+		overflow: hidden;
+	}
+
+	.pkg-modal-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 16px 20px;
+		border-bottom: 1px solid #e2e8f0;
+		background: #f8fafc;
+	}
+
+	.pkg-modal-title-wrap {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.pkg-modal-icon {
+		font-size: 22px;
+		width: 40px;
+		height: 40px;
+		border-radius: 10px;
+		background: #f0fdf4;
+		border: 1px solid #bbf7d0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.pkg-modal-title {
+		margin: 0;
+		font-size: 16px;
+		font-weight: 800;
+		color: #0f172a;
+	}
+
+	.pkg-modal-subtitle {
+		margin: 2px 0 0;
+		font-size: 12px;
+		color: #64748b;
+	}
+
+	.pkg-modal-close {
+		width: 32px;
+		height: 32px;
+		border-radius: 8px;
+		border: 1px solid #cbd5e1;
+		background: #ffffff;
+		color: #475569;
+		font-size: 14px;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.pkg-modal-close:hover {
+		background: #f1f5f9;
+		color: #0f172a;
+	}
+
+	.pkg-modal-body {
+		padding: 18px 20px;
+		overflow-y: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		flex: 1;
+	}
+
+	.pkg-selection-bar {
+		display: grid;
+		grid-template-columns: 1fr 200px;
+		gap: 14px;
+		background: #f8fafc;
+		padding: 12px 14px;
+		border-radius: 10px;
+		border: 1px solid #e2e8f0;
+	}
+
+	.pkg-select-field,
+	.pkg-date-field {
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+	}
+
+	.pkg-field-label {
+		font-size: 11.5px;
+		font-weight: 700;
+		color: #1e293b;
+	}
+
+	.pkg-select-input,
+	.pkg-date-input {
+		height: 38px;
+		padding: 0 10px;
+		border-radius: 8px;
+		border: 1px solid #cbd5e1;
+		background: #ffffff;
+		font-size: 13px;
+		font-weight: 600;
+		color: #0f172a;
+	}
+
+	.pkg-select-input:focus,
+	.pkg-date-input:focus {
+		outline: none;
+		border-color: #15803d;
+		box-shadow: 0 0 0 2px rgba(21, 128, 61, 0.15);
+	}
+
+	.pkg-quick-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.pkg-chip-btn {
+		padding: 4px 10px;
+		border-radius: 999px;
+		border: 1px solid #e2e8f0;
+		background: #ffffff;
+		color: #334155;
+		font-size: 11.5px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.12s ease;
+	}
+
+	.pkg-chip-btn:hover {
+		border-color: #86efac;
+		background: #f0fdf4;
+		color: #166534;
+	}
+
+	.pkg-chip-btn.active {
+		background: #15803d;
+		border-color: #15803d;
+		color: #ffffff;
+	}
+
+	.pkg-empty-prompt {
+		padding: 36px 20px;
+		text-align: center;
+		border: 1px dashed #cbd5e1;
+		border-radius: 10px;
+		color: #64748b;
+		font-size: 13px;
+	}
+
+	.pkg-table-container {
+		border: 1px solid #e2e8f0;
+		border-radius: 10px;
+		overflow-x: auto;
+	}
+
+	.pkg-modal-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 12.5px;
+	}
+
+	.pkg-modal-table th {
+		background: #f1f5f9;
+		color: #334155;
+		font-size: 11px;
+		font-weight: 800;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		text-align: left;
+		padding: 9px 10px;
+		border-bottom: 1px solid #e2e8f0;
+	}
+
+	.pkg-modal-table td {
+		padding: 6px 8px;
+		border-bottom: 1px solid #f1f5f9;
+		vertical-align: middle;
+	}
+
+	.pkg-modal-table tr:last-child td {
+		border-bottom: none;
+	}
+
+	.col-nome { width: 25%; }
+	.col-pacote { width: 17%; }
+	.col-unidade { width: 13%; }
+	.col-ref { width: 24%; }
+	.col-resultado { width: 17%; }
+	.col-del { width: 4%; }
+
+	.pkg-cell-input {
+		width: 100%;
+		height: 32px;
+		padding: 4px 8px;
+		border: 1px solid #cbd5e1;
+		border-radius: 6px;
+		font-size: 12.5px;
+		color: #0f172a;
+		background: #ffffff;
+		box-sizing: border-box;
+	}
+
+	.pkg-cell-input:focus {
+		outline: none;
+		border-color: #15803d;
+		box-shadow: 0 0 0 2px rgba(21, 128, 61, 0.14);
+	}
+
+	.pkg-cell-input.font-semibold {
+		font-weight: 600;
+	}
+
+	.pkg-cell-input.mono-cell {
+		font-family: 'IBM Plex Mono', monospace;
+		font-size: 11.5px;
+	}
+
+	.pkg-cell-input.result-cell {
+		font-family: 'IBM Plex Mono', monospace;
+		font-weight: 700;
+		border-color: #86efac;
+		background: #f0fdf4;
+		color: #14532d;
+	}
+
+	.pkg-cell-input.result-cell:focus {
+		background: #ffffff;
+		border-color: #15803d;
+	}
+
+	.cell-del {
+		text-align: center;
+	}
+
+	.btn-del-pkg-row {
+		width: 24px;
+		height: 24px;
+		border-radius: 6px;
+		border: 1px solid #fee2e2;
+		background: #fff5f5;
+		color: #dc2626;
+		font-size: 11px;
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.btn-del-pkg-row:hover {
+		background: #dc2626;
+		color: #ffffff;
+	}
+
+	.pkg-table-actions {
+		display: flex;
+		justify-content: flex-start;
+	}
+
+	.btn-add-extra-row {
+		padding: 6px 12px;
+		border-radius: 7px;
+		border: 1px dashed #94a3b8;
+		background: #f8fafc;
+		color: #334155;
+		font-size: 12px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.btn-add-extra-row:hover {
+		border-color: #15803d;
+		color: #15803d;
+		background: #f0fdf4;
+	}
+
+	.pkg-modal-footer {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 10px;
+		padding: 14px 20px;
+		border-top: 1px solid #e2e8f0;
+		background: #f8fafc;
+	}
+
+	.btn-pkg-cancel {
+		padding: 8px 16px;
+		border-radius: 8px;
+		border: 1px solid #cbd5e1;
+		background: #ffffff;
+		color: #334155;
+		font-size: 13px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.btn-pkg-cancel:hover {
+		background: #f1f5f9;
+	}
+
+	.btn-pkg-confirm {
+		padding: 8px 18px;
+		border-radius: 8px;
+		border: 1px solid #15803d;
+		background: #15803d;
+		color: #ffffff;
+		font-size: 13px;
+		font-weight: 700;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.btn-pkg-confirm:hover:not(:disabled) {
+		background: #166534;
+	}
+
+	.btn-pkg-confirm:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	.fade-in {
@@ -1233,6 +1985,9 @@
 		}
 		.field-ref {
 			grid-column: span 2;
+		}
+		.pkg-selection-bar {
+			grid-template-columns: 1fr;
 		}
 	}
 </style>

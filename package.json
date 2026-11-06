@@ -10,6 +10,7 @@
     "prepare": "svelte-kit sync || echo ''",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "test": "./node_modules/.bin/esbuild src/lib/anamnese/serialize.test.ts --bundle --platform=node --format=esm --outfile=/tmp/serialize.test.mjs && node --test /tmp/serialize.test.mjs && rm -f /tmp/serialize.test.mjs",
     "deploy": "npm run build && wrangler deploy",
     "cf-typegen": "wrangler types ./src/worker-configuration.d.ts"
   },

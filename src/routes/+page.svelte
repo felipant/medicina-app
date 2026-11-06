@@ -539,7 +539,68 @@
 					</div>
 				</div>
 
-				<!-- Módulo 4: Pronto-Atendimento & Triagem -->
+				<!-- Módulo 4: Pequenas Cirurgias Ambulatoriais -->
+				<div class="app-card active-card">
+					<div class="card-top">
+						<div class="card-icon-wrap active-icon">
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 24 24"
+								width="24"
+								height="24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							>
+								<circle cx="6" cy="6" r="3" />
+								<path d="M8.12 8.12 12 12" />
+								<path d="M20 4 8.12 15.88" />
+								<circle cx="6" cy="18" r="3" />
+								<path d="M14.8 14.8 20 20" />
+							</svg>
+						</div>
+						<span class="badge-status online">Disponível</span>
+					</div>
+
+					<div class="card-body">
+						<h2 class="card-title">Pequenas Cirurgias</h2>
+						<p class="card-category">Anamnese Rápida Ambulatorial</p>
+						<p class="card-desc">
+							Checklist pré-procedimento com alertas de hemostasia/alergia, exame direcionado, texto e PDF.
+						</p>
+
+						<div class="card-features">
+							<span class="feature-tag">Hemostasia</span>
+							<span class="feature-tag">Alertas</span>
+							<span class="feature-tag">ASA</span>
+							<span class="feature-tag">PDF</span>
+						</div>
+					</div>
+
+					<div class="card-footer">
+						<a href="/pequenas-cirurgias" class="btn-primary">
+							<span>Abrir Pequenas Cirurgias</span>
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								width="16"
+								height="16"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2.2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							>
+								<line x1="5" y1="12" x2="19" y2="12" />
+								<polyline points="12 5 19 12 12 19" />
+							</svg>
+						</a>
+					</div>
+				</div>
+
+				<!-- Módulo 5: Pronto-Atendimento & Triagem -->
 				<div class="app-card disabled-card">
 					<div class="card-top">
 						<div class="card-icon-wrap disabled-icon">

@@ -92,7 +92,47 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
 ---
 
-## 🚀 Desenvolvimento & Execução Local
+## ✂️ Módulo de Anamnese Rápida — Pequenas Cirurgias Ambulatoriais (`/pequenas-cirurgias`)
+
+Módulo orientado a schema (`src/lib/anamnese/`) projetado para preenchimento ágil no celular/desktop durante consultas de pequenas cirurgias ambulatoriais:
+
+### Arquitetura do Módulo (`src/lib/anamnese/`)
+- `schema.ts` — Definição declarativa das 6 seções e todos os campos (`yesno`, `radio`, `checkboxGroup`, `text`, `textarea`, `number`, `date`), regras de visibilidade (`showIf`), complementos condicionais (`conditionalDetail`) e alertas (`alert`).
+- `types.ts` — Tipagem estrita TypeScript para o schema, respostas e estruturas serializadas.
+- `state.svelte.ts` — Estado reativo com Svelte 5 Runes (`$state`, `$derived`), controle opt-in de rascunho em `localStorage` e atalho `"Marcar tudo como Não"` por seção.
+- `serialize.ts` — Fonte única de verdade (`serializeAnswers(schema, answers, options)`) consumida tanto pelo gerador de PDF quanto pelo gerador de texto para área de transferência.
+- `exportPdf.ts` — Geração 100% client-side de arquivo PDF A4 multipáginas (`anamnese_<nome-sem-acentos>_<AAAA-MM-DD>.pdf`) com suporte a acentuação em português (WinAnsiEncoding), bloco de Pontos de Atenção em destaque, paginação e campo de assinatura/carimbo.
+- `exportText.ts` — Geração de texto puro estruturado e cópia com `navigator.clipboard.writeText` (e fallback `execCommand`).
+- `serialize.test.ts` — Testes unitários cobrindo omissão de campos/seções vazias, inclusão de `"Não"`, filtro `onlyPositive`, omissão de campos ocultos por `showIf` e preservação de ordem.
+
+### Como editar ou adicionar um campo no Schema
+Basta adicionar ou editar um objeto em [`src/lib/anamnese/schema.ts`](src/lib/anamnese/schema.ts):
+```ts
+{
+  id: 'meu_novo_campo',
+  label: 'Usa medicação X?',
+  type: 'yesno', // 'yesno' | 'radio' | 'checkboxGroup' | 'text' | 'textarea' | 'number' | 'date'
+  allowNaoSei: true,
+  alert: {
+    triggerValue: 'Sim',
+    label: 'Uso de medicação X',
+    note: 'avaliar suspensão pré-operatória'
+  },
+  conditionalDetail: {
+    triggerValue: 'Sim',
+    placeholder: 'Dose e última tomada (opcional)'
+  },
+  showIf: {
+    fieldId: 'sexo',
+    equals: 'Feminino'
+  }
+}
+```
+A interface, o painel de "Pontos de Atenção", o texto copiado e o PDF passarão a refletir o novo campo automaticamente.
+
+---
+
+## 🚀 Desenvolvimento, Testes & Deploy no Cloudflare
 
 ```bash
 # Instalar dependências
@@ -101,10 +141,16 @@ npm install
 # Rodar localmente
 npm run dev
 
-# Verificação de tipos e linting
+# Executar testes unitários do serializador (serialize.ts)
+npm test
+
+# Verificação de tipos e linting (Svelte 5 + TypeScript)
 npm run check
 
-# Build de produção (Cloudflare Workers/Pages)
+# Build de produção (@sveltejs/adapter-cloudflare)
 npm run build
+
+# Deploy para Cloudflare Workers / Pages
+npm run deploy
 ```
 
